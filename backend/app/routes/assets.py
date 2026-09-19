@@ -102,7 +102,11 @@ def update_maintenance(plan_id):
     if 'planType' in payload and payload['planType'] not in {'PREVENTIVE', 'CORRECTIVE', 'INSPECTION'}: raise ValidationFailure('Tipo de plan no permitido.')
     for key, field in [('status', 'status'), ('planType', 'plan_type'), ('provider', 'provider'), ('responsible', 'responsible'), ('notes', 'notes'), ('cost', 'cost')]:
         if key in payload:
-            if key == 'cost' and payload[key] not in (None, '') and float(payload[key]) < 0: raise ValidationFailure('El costo no puede ser negativo.')
+            if key == 'cost' and payload[key] not in (None, ''):
+                try: numeric_cost = float(payload[key])
+                except (TypeError, ValueError) as error: raise ValidationFailure('El costo debe ser numérico.') from error
+                if numeric_cost < 0: raise ValidationFailure('El costo no puede ser negativo.')
+                payload[key] = numeric_cost
             setattr(row, field, payload[key])
     if 'dueDate' in payload:
         try: row.due_date = datetime.fromisoformat(payload['dueDate'])
