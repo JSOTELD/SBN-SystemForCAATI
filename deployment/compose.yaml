@@ -1,0 +1,54 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      MYSQL_HOST: db
+      MYSQL_USER: itam
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD}
+      MYSQL_DATABASE: itam_sbn
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET}
+      CORS_ORIGIN: https://${DOMAIN:?Defina DOMAIN}
+      UPLOAD_FOLDER: /srv/itam/uploads
+    volumes:
+      - photos:/srv/itam/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: itam_sbn
+      MARIADB_USER: itam
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defina MYSQL_ROOT_PASSWORD}
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Defina DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - proxy_config:/config
+    depends_on:
+      - app
+volumes:
+  database:
+  photos:
+  certificates:
+  proxy_config:

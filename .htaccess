@@ -1,0 +1,5 @@
+Options -Indexes
+RewriteEngine On
+# XAMPP: el backend, las copias y la configuración no son archivos públicos.
+RewriteRule ^(?:backend|database|docs)(?:/|$) - [F,L,NC]
+RewriteRule (^|/)\. - [F,L]

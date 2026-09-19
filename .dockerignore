@@ -1,0 +1,9 @@
+**/.venv*
+**/__pycache__
+**/.env
+**/*.log
+database
+tests
+.git
+backend/private_uploads
+**/node_modules

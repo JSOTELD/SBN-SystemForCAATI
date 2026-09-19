@@ -1,0 +1,203 @@
+from datetime import datetime, timezone
+
+from flask import Blueprint, jsonify, request
+from sqlalchemy import func, or_
+
+from ..extensions import db
+from ..models import Asset, AssetGroup, AssetGroupMember, Movement
+from ..security import auth_required, current_user, roles_required
+from ..services.audit import audit
+from ..validation import ValidationFailure, data, required, sbn
+
+assets_bp = Blueprint("assets", __name__)
+ASSET_TYPES = {"TYPE_1", "TYPE_2", "TYPE_3", "LAPTOP", "PRINTER", "ALL_IN_ONE", "MONITOR", "KEYBOARD", "CPU"}
+# Fuente: Excel patrimonial, 02_Base Consolidada, columnas Situación y Condición.
+# En el libro Situación describe conservación; Condición describe operatividad.
+STATUSES = {"OPERATIVO", "MANTENIMIENTO", "BAJA", "NO_OPERATIVO", "INOPERATIVO", "SIN_DATO"}
+CONDITIONS = {"BUENO", "REGULAR", "MALO", "NUEVO", "FALTANTE"}
+
+
+def apply_asset_payload(asset, payload):
+    asset.sbn = sbn(payload.get("sbn")); asset.asset_type = required(payload.get("assetType"), "assetType")
+    asset.description = required(payload.get("description"), "description", 3, 250); asset.site = required(payload.get("site"), "site", 2, 150)
+    if asset.asset_type not in ASSET_TYPES: raise ValidationFailure("Tipo de activo no permitido.")
+    asset.status = payload.get("status", "OPERATIVO"); asset.condition = payload.get("condition", "BUENO")
+    if asset.status not in STATUSES or asset.condition not in CONDITIONS: raise ValidationFailure("Estado o condición no permitidos.")
+    mapping = {"internalCode": "internal_code", "brand": "brand", "model": "model", "serialNumber": "serial_number",
+               "executingUnit": "executing_unit", "building": "building", "floor": "floor", "room": "room",
+               "organizationalUnit": "organizational_unit", "responsiblePerson": "responsible_person",
+               "thirdPartyUser": "third_party_user", "processor": "processor", "memory": "memory", "storage": "storage",
+               "operatingSystem": "operating_system", "notes": "notes"}
+    for source, target in mapping.items():
+        value = str(payload[source]).strip() if payload.get(source) else None
+        limit = getattr(Asset.__table__.columns[target].type, 'length', None)
+        if limit and value and len(value) > limit: raise ValidationFailure(f'{source} admite hasta {limit} caracteres.')
+        setattr(asset, target, value)
+    software = payload.get("installedSoftware", [])
+    if not isinstance(software, list): raise ValidationFailure("installedSoftware debe ser una lista.")
+    asset.installed_software = [required(item, "software", 1, 150) for item in software]
+    for source, target in {"recordComplete": "record_complete", "recordConsistent": "record_consistent",
+                           "correctlyRegistered": "correctly_registered", "recordUpdated": "record_updated",
+                           "barcodeVerified": "barcode_verified"}.items(): setattr(asset, target, bool(payload.get(source, False)))
+    if asset.barcode_verified: asset.last_verified_at = datetime.now(timezone.utc)
+
+
+def movement_dict(row):
+    return {"id": row.id, "asset_id": row.asset_id, "movement_type": row.movement_type, "previous_site": row.previous_site,
+            "new_site": row.new_site, "previous_responsible": row.previous_responsible, "new_responsible": row.new_responsible,
+            "reason": row.reason, "support_document": row.support_document, "created_at": row.created_at.isoformat()}
+
+
+@assets_bp.get("/assets")
+@auth_required
+def list_assets():
+    search = request.args.get("search", "").strip(); asset_type = request.args.get("type", "").strip(); status = request.args.get("status", "").strip(); site = request.args.get("site", "").strip()
+    page = max(1, request.args.get("page", 1, type=int)); size = min(500, max(1, request.args.get("pageSize", 25, type=int)))
+    from ..security import scoped_assets
+    query = scoped_assets(db.select(Asset))
+    if search:
+        term = f"%{search}%"; query = query.where(or_(Asset.sbn.like(term), Asset.serial_number.like(term), Asset.description.like(term), Asset.responsible_person.like(term)))
+    if asset_type: query = query.where(Asset.asset_type == asset_type)
+    if status: query = query.where(Asset.status == status)
+    if site: query = query.where(Asset.site == site)
+    if request.args.get('ungrouped') == '1':
+        query = query.where(Asset.asset_type.in_(['ALL_IN_ONE', 'TYPE_1', 'TYPE_2', 'TYPE_3', 'MONITOR', 'KEYBOARD', 'CPU']), ~Asset.group_membership.has())
+    total = db.session.scalar(db.select(func.count()).select_from(query.subquery()))
+    rows = db.session.scalars(query.order_by(Asset.updated_at.desc(), Asset.sbn).offset((page - 1) * size).limit(size)).all()
+    return {"items": [row.api_dict() for row in rows], "total": total, "page": page, "pageSize": size}
+
+
+@assets_bp.get("/assets/sbn/<value>")
+@auth_required
+def by_sbn(value):
+    asset = db.session.execute(db.select(Asset).where(Asset.sbn == sbn(value))).scalar_one_or_none()
+    if not asset: return jsonify(message=f"No se encontró un activo con SBN {value}.", inventoryStatus="NOT_FOUND"), 404
+    from ..security import ensure_asset_access
+    ensure_asset_access(asset)
+    result = asset.api_dict()
+    if asset.group_membership and current_user().role == 'ADMIN':
+        result["assetGroup"] = asset.group_membership.group.api_dict()
+    return result
+
+
+@assets_bp.get("/assets/<asset_id>")
+@auth_required
+def get_asset(asset_id):
+    asset = db.session.get(Asset, asset_id)
+    if not asset: return jsonify(message="Activo no encontrado."), 404
+    from ..security import ensure_asset_access
+    ensure_asset_access(asset)
+    result = asset.api_dict(); result["movements"] = [movement_dict(row) for row in sorted(asset.movements, key=lambda item: item.created_at, reverse=True)] if current_user().role == 'ADMIN' else []
+    return result
+
+
+@assets_bp.post("/assets")
+@roles_required("ADMIN")
+def create_asset():
+    asset = Asset(); apply_asset_payload(asset, data()); db.session.add(asset); db.session.flush()
+    audit(current_user().id, "CREATE", "ASSET", asset.id, {"sbn": asset.sbn}); db.session.commit(); return asset.api_dict(), 201
+
+
+@assets_bp.put("/assets/<asset_id>")
+@roles_required("ADMIN")
+def update_asset(asset_id):
+    asset = db.session.get(Asset, asset_id)
+    if not asset: return jsonify(message="Activo no encontrado."), 404
+    payload = data()
+    if payload.get('version') != asset.version: return jsonify(message='El activo cambió. Recargue la ficha antes de guardar.'), 409
+    reason = required(payload.get('correctionReason'), 'motivo de corrección', 5, 1000)
+    before = asset.api_dict()
+    apply_asset_payload(asset, payload)
+    audit(current_user().id, 'UPDATE', 'ASSET', asset.id, {'before': before, 'after': asset.api_dict(), 'reason': reason})
+    db.session.commit(); return asset.api_dict()
+
+
+@assets_bp.delete("/assets/<asset_id>")
+@roles_required("ADMIN")
+def delete_asset(asset_id):
+    asset = db.session.get(Asset, asset_id)
+    if not asset: return jsonify(message="Activo no encontrado."), 404
+    return jsonify(message='Use el estado BAJA para conservar la trazabilidad del activo. No se permite eliminar físicamente.'), 409
+
+
+@assets_bp.get("/dashboard")
+@auth_required
+def dashboard():
+    total = db.session.scalar(db.select(func.count(Asset.id))) or 0
+    by_status = dict(db.session.execute(db.select(Asset.status, func.count()).group_by(Asset.status)).all())
+    complete_consistent = db.session.scalar(db.select(func.count(Asset.id)).where(Asset.record_complete.is_(True), Asset.record_consistent.is_(True))) or 0
+    barcode_verified = db.session.scalar(db.select(func.count(Asset.id)).where(Asset.barcode_verified.is_(True))) or 0
+    updated = db.session.scalar(db.select(func.count(Asset.id)).where(Asset.record_updated.is_(True))) or 0
+    by_type = [{"type": key, "total": value} for key, value in db.session.execute(db.select(Asset.asset_type, func.count()).group_by(Asset.asset_type)).all()]
+    by_site = [{"site": key, "total": value} for key, value in db.session.execute(db.select(Asset.site, func.count()).group_by(Asset.site)).all()]
+    recent = db.session.scalars(db.select(Asset).order_by(Asset.updated_at.desc()).limit(5)).all()
+    ungrouped = db.session.scalar(db.select(func.count(Asset.id)).where(Asset.asset_type.in_(["ALL_IN_ONE", "MONITOR", "KEYBOARD", "CPU", "TYPE_1", "TYPE_2", "TYPE_3"]), ~Asset.group_membership.has())) or 0
+    incomplete_groups = sum(not group.api_dict()["complete"] for group in db.session.scalars(db.select(AssetGroup)).all())
+    return {"totals": {"total": total, "operational": by_status.get("OPERATIVO", 0),
+                        "complete_consistent": complete_consistent, "barcode_verified": barcode_verified, "updated": updated},
+            "grouping": {"ungroupedComponents": ungrouped, "incompleteGroups": incomplete_groups},
+            "byType": by_type, "bySite": by_site, "recent": [row.api_dict() for row in recent]}
+
+
+@assets_bp.get("/asset-groups")
+@auth_required
+def list_groups():
+    return [group.api_dict() for group in db.session.scalars(db.select(AssetGroup).order_by(AssetGroup.code)).all()]
+
+
+@assets_bp.post("/asset-groups")
+@roles_required("ADMIN")
+def create_group():
+    payload = data(); group_type = payload.get("groupType")
+    if group_type not in {"ALL_IN_ONE", "TYPE_2", "TYPE_3"}: raise ValidationFailure("Tipo de agrupación no permitido.")
+    group = AssetGroup(code=required(payload.get("code"), "code", 3, 30).upper(), group_type=group_type,
+                       name=required(payload.get("name"), "name", 3, 150), site=required(payload.get("site"), "site", 2, 150),
+                       responsible_person=payload.get("responsiblePerson") or None)
+    db.session.add(group); db.session.flush(); audit(current_user().id, "CREATE", "ASSET_GROUP", group.id, {"code": group.code}); db.session.commit()
+    return group.api_dict(), 201
+
+
+@assets_bp.post("/asset-groups/<group_id>/members")
+@roles_required("ADMIN")
+def add_group_member(group_id):
+    group = db.session.get(AssetGroup, group_id); payload = data()
+    if not group: return jsonify(message="Agrupación no encontrada."), 404
+    asset = db.session.execute(db.select(Asset).where(Asset.sbn == sbn(payload.get("sbn")))).scalar_one_or_none()
+    if not asset: return jsonify(message="El SBN indicado no está inventariado."), 404
+    role = required(payload.get("componentRole"), "componentRole", 2, 30)
+    allowed = {"ALL_IN_ONE": {"INTEGRATED_UNIT", "KEYBOARD"}, "TYPE_2": {"MONITOR", "KEYBOARD", "CPU"}, "TYPE_3": {"MONITOR", "KEYBOARD", "CPU"}}[group.group_type]
+    if role not in allowed: raise ValidationFailure("El componente no corresponde al tipo de agrupación.")
+    expected_type = {"INTEGRATED_UNIT": "ALL_IN_ONE", "MONITOR": "MONITOR", "KEYBOARD": "KEYBOARD", "CPU": "CPU"}[role]
+    compatible = {expected_type}
+    if role == 'INTEGRATED_UNIT': compatible.add('TYPE_1')
+    if role == 'CPU': compatible.add(group.group_type)
+    if asset.asset_type not in compatible:
+        raise ValidationFailure(f"El activo es {asset.asset_type} y no puede ocupar la función {role}.")
+    if asset.group_membership: return jsonify(message=f"El activo ya pertenece al grupo {asset.group_membership.group.code}."), 409
+    if any(member.component_role == role for member in group.members):
+        return jsonify(message=f"El grupo {group.code} ya tiene un componente asignado como {role}. Cree un grupo nuevo o seleccione una función faltante."), 409
+    member = AssetGroupMember(group=group, asset=asset, component_role=role); db.session.add(member)
+    audit(current_user().id, "GROUP", "ASSET", asset.id, {"group": group.code, "role": role}); db.session.commit()
+    return group.api_dict(), 201
+
+
+@assets_bp.get("/movements")
+@auth_required
+def movements():
+    asset_id = request.args.get("assetId"); query = db.select(Movement).order_by(Movement.created_at.desc())
+    if asset_id: query = query.where(Movement.asset_id == asset_id)
+    return [movement_dict(row) for row in db.session.scalars(query.limit(500)).all()]
+
+
+@assets_bp.post("/movements")
+@roles_required("ADMIN")
+def create_movement():
+    payload = data(); asset = db.session.get(Asset, required(payload.get("assetId"), "assetId"))
+    if not asset: return jsonify(message="Activo no encontrado."), 404
+    row = Movement(asset_id=asset.id, movement_type=required(payload.get("movementType"), "movementType", 2, 100),
+                   previous_site=asset.site, new_site=payload.get("newSite") or asset.site,
+                   previous_responsible=asset.responsible_person, new_responsible=payload.get("newResponsible") or asset.responsible_person,
+                   reason=required(payload.get("reason"), "reason", 3, 1000), support_document=payload.get("supportDocument") or None,
+                   performed_by=current_user().id)
+    asset.site = row.new_site; asset.responsible_person = row.new_responsible; db.session.add(row); db.session.flush()
+    audit(current_user().id, "CREATE", "MOVEMENT", row.id, {"assetId": asset.id}); db.session.commit(); return movement_dict(row), 201

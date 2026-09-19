@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Preparar proyecto y base de datos",
+      "type": "shell",
+      "command": "PREPARAR_PROYECTO.cmd",
+      "problemMatcher": []
+    },
+    {
+      "label": "Iniciar sistema completo",
+      "type": "shell",
+      "command": "INICIAR_SISTEMA.cmd",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

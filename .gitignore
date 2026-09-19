@@ -1,0 +1,17 @@
+.env
+*.log
+backend/.venv/
+backend/.venv-local/
+backend/private_uploads/
+deployment/.env
+deployment/backups/
+tests/tooling/
+tests/frontend/node_modules/
+database/backup_*.sql
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Context metadata: regenerated automatically by tools/code-context/context.py
+.codex-context/*.json
+.codex-context/*.tmp
