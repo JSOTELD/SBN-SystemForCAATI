@@ -32,6 +32,9 @@ def maintenance_dict(row):
 def maintenance_list():
     from datetime import datetime, timezone
     query = db.select(MaintenancePlan).order_by(MaintenancePlan.due_date)
+    status = request.args.get('status', '').strip().upper()
+    if status: query = query.where(MaintenancePlan.status == status)
+    if request.args.get('overdue') == '1': query = query.where(MaintenancePlan.status == 'PLANNED', MaintenancePlan.due_date < datetime.now(timezone.utc))
     rows = db.session.scalars(query.limit(500)).all()
     now = datetime.now(timezone.utc)
     result = []
