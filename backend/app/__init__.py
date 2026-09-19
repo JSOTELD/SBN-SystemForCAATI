@@ -56,6 +56,7 @@ def create_app(config_name=None):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "camera=(self), geolocation=(), microphone=()"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["Cache-Control"] = "no-store"
         return response
 
