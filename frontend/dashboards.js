@@ -4,6 +4,7 @@ visibleMenu=()=>{
   const entries=dashboardMenu();
   if(['ADMIN','INVENTORY'].includes(state.user?.role))entries.push(['operationsOverview','Resumen de jornadas']);
   if(state.user?.role==='RESEARCHER')entries.push(['researchOverview','Resumen operativo']);
+  if(state.user?.role==='VIEWER')entries.push(['viewerOverview','Indicadores públicos']);
   return entries;
 };
 const formatMetric=n=>Number(n).toLocaleString('es-PE',{maximumFractionDigits:2});
@@ -59,3 +60,8 @@ enhancePage=function(){
 const navigateWithDashboards=navigate;
 navigate=async screen=>{await navigateWithDashboards(screen);const active=document.querySelector('.nav button.active');if(active){active.setAttribute('aria-current','page');const group=active.closest('details');if(group)group.open=true;}document.querySelectorAll('.nav button:not(.active)[aria-current]').forEach(b=>b.removeAttribute('aria-current'));};
 enhancePage();
+
+screens.viewerOverview=async view=>{
+  const data=await request('/dashboard'); const t=data.totals||{}; const i=data.indicators||{};
+  view.innerHTML=`<h2>Indicadores públicos</h2><p>Vista de consulta del inventario institucional y su nivel de completitud.</p>${summaryCards([['Activos registrados',t.total||0],['Operativos',t.operational||0],['Completos',`${t.complete_consistent||0} (${i.completePercent||0}%)`],['SBN verificados',`${t.barcode_verified||0} (${i.verifiedPercent||0}%)`]])}<div class="grid2"><section class="panel dashboard-section"><h3>Distribución por tipo</h3>${(data.byType||[]).map(row=>`<div class="dashboard-bar"><span>${escapeHtml(row.type)}</span><meter min="0" max="${t.total||1}" value="${row.total}"></meter><strong>${row.total}</strong></div>`).join('')||'<p>Sin datos.</p>'}</section><section class="panel dashboard-section"><h3>Estado de los activos</h3>${(data.byStatus||[]).map(row=>`<div class="row"><span>${escapeHtml(row.status)}</span><strong>${row.total}</strong></div>`).join('')||'<p>Sin datos.</p>'}</section></div>`;
+};
