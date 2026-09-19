@@ -99,6 +99,75 @@ def init_commands(app):
         study,created=import_guides(path,user.id)
         click.echo(f'Guías {study.id}: {"creadas" if created else "ya importadas"}; {study.manifest["population"]} pares individuales derivados; {study.manifest["checks"]} controles.')
 
+    @app.cli.command('trim-guide-days')
+    @click.option('--through-day', type=click.IntRange(1, 30), required=True)
+    @click.option('--month', type=click.IntRange(1, 12), default=None)
+    @click.option('--year', type=click.IntRange(2000, 2100), default=None)
+    @click.option('--apply', is_flag=True, help='Aplica el recorte. Sin esta opción solo informa.')
+    def trim_guide_days(through_day, month, year, apply):
+        """Conserva guías y detalles hasta un día calendario del estudio."""
+        from .models import GuideStudy, GuideAsset
+        from .services.guide_audit import METRICS, digest
+        studies = db.session.scalars(db.select(GuideStudy)).all()
+        if not studies:
+            raise click.ClickException('No hay estudios de guías para recortar.')
+        total_removed = 0
+        for study in studies:
+            kept_by_metric = {}
+            for metric in METRICS:
+                guide = study.guides.get(metric)
+                if not guide:
+                    raise click.ClickException(f'{study.id}: falta la guía {metric}.')
+                kept = []
+                for row in guide['rows']:
+                    dates = [row[phase]['date'] for phase in ('PRETEST', 'POSTTEST')]
+                    if (month is not None and year is not None and
+                            any(int(value[0:4]) != year or int(value[5:7]) != month for value in dates)):
+                        raise click.ClickException(f'{study.id}: una fecha no corresponde a {year:04d}-{month:02d}.')
+                    if row['day'] <= through_day:
+                        kept.append(row)
+                kept_by_metric[metric] = kept
+            details = db.session.scalars(db.select(GuideAsset).where(GuideAsset.study_id == study.id)).all()
+            remove = [asset for asset in details if asset.pre.get('day', 0) > through_day or asset.post.get('day', 0) > through_day]
+            click.echo(f'{study.filename}: conservar {len(kept_by_metric["PRCC"])} días; eliminar {len(remove)} detalles.')
+            if not apply:
+                continue
+            guides_payload = dict(study.guides)
+            for metric in METRICS:
+                guide = dict(study.guides[metric])
+                guide['rows'] = kept_by_metric[metric]
+                summaries = {}
+                for phase in ('PRETEST', 'POSTTEST'):
+                    denominator = sum(row[phase]['denominator'] for row in guide['rows'])
+                    numerator = sum(row[phase]['numerator'] for row in guide['rows'])
+                    multiplier = 100 if guide['unit'] == '%' else 1
+                    summaries[phase] = {'denominator': denominator, 'numerator': numerator,
+                                        'value': numerator / denominator * multiplier}
+                guide['summary'] = summaries
+                guides_payload[metric] = guide
+            study.guides = guides_payload
+            for asset in remove:
+                db.session.delete(asset)
+            kept_details = [{'sample_code': asset.sample_code, 'snapshot': asset.snapshot,
+                             'pre': asset.pre, 'post': asset.post}
+                            for asset in sorted(details, key=lambda item: item.sample_code)
+                            if asset not in remove]
+            study.manifest = {**study.manifest, 'population': len(kept_details),
+                              'checks': len(METRICS) * 2 * through_day,
+                              'passedChecks': len(METRICS) * 2 * through_day,
+                              'retainedThroughDay': through_day,
+                              'removedFromDay': through_day + 1, 'calendarMonth': month,
+                              'calendarYear': year, 'detailsHash': digest(kept_details),
+                              'guidesHash': digest(study.guides),
+                              'statement': 'Guías recortadas al periodo observado; no se conservaron simulaciones posteriores.'}
+            total_removed += len(remove)
+        if apply:
+            db.session.commit()
+            click.echo(f'Recorte aplicado. Detalles eliminados: {total_removed}.')
+        else:
+            db.session.rollback()
+            click.echo('Simulación completada. Usa --apply para confirmar el recorte.')
+
     @app.cli.command('disable-account')
     @click.argument('username')
     def disable_account(username):
