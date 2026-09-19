@@ -150,6 +150,12 @@ class Movement(db.Model):
     previous_responsible: Mapped[str | None] = mapped_column(String(500)); new_responsible: Mapped[str | None] = mapped_column(String(500))
     reason: Mapped[str] = mapped_column(String(1000), nullable=False); support_document: Mapped[str | None] = mapped_column(String(500))
     performed_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="REQUESTED", nullable=False, index=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+    approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[str | None] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     asset = relationship("Asset", back_populates="movements")
 
@@ -261,7 +267,7 @@ class LoginThrottle(db.Model):
 
 
 class GuideStudy(TimestampMixin, db.Model):
-    __tablename__ = 'simulation_studies'
+    __tablename__ = 'guide_studies'
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -273,9 +279,9 @@ class GuideStudy(TimestampMixin, db.Model):
 
 
 class GuideAsset(db.Model):
-    __tablename__ = 'simulation_assets'
+    __tablename__ = 'guide_assets'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    study_id: Mapped[str] = mapped_column(ForeignKey('simulation_studies.id'), nullable=False, index=True)
+    study_id: Mapped[str] = mapped_column(ForeignKey('guide_studies.id'), nullable=False, index=True)
     sample_code: Mapped[str] = mapped_column(String(20), nullable=False)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
     pre: Mapped[dict] = mapped_column(JSON, nullable=False)

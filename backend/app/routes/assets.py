@@ -45,7 +45,11 @@ def apply_asset_payload(asset, payload):
 def movement_dict(row):
     return {"id": row.id, "asset_id": row.asset_id, "movement_type": row.movement_type, "previous_site": row.previous_site,
             "new_site": row.new_site, "previous_responsible": row.previous_responsible, "new_responsible": row.new_responsible,
-            "reason": row.reason, "support_document": row.support_document, "created_at": row.created_at.isoformat()}
+            "reason": row.reason, "support_document": row.support_document, "status": row.status,
+            "requested_at": row.requested_at.isoformat() if row.requested_at else None,
+            "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+            "delivered_at": row.delivered_at.isoformat() if row.delivered_at else None,
+            "rejection_reason": row.rejection_reason, "created_at": row.created_at.isoformat()}
 
 
 @assets_bp.get("/assets")
@@ -220,5 +224,44 @@ def create_movement():
                    previous_responsible=asset.responsible_person, new_responsible=payload.get("newResponsible") or asset.responsible_person,
                    reason=required(payload.get("reason"), "reason", 3, 1000), support_document=payload.get("supportDocument") or None,
                    performed_by=current_user().id)
-    asset.site = row.new_site; asset.responsible_person = row.new_responsible; db.session.add(row); db.session.flush()
+    db.session.add(row); db.session.flush()
     audit(current_user().id, "CREATE", "MOVEMENT", row.id, {"assetId": asset.id}); db.session.commit(); return movement_dict(row), 201
+
+
+def movement_or_404(movement_id):
+    row = db.session.get(Movement, movement_id)
+    if not row: return None, (jsonify(message="Movimiento no encontrado."), 404)
+    return row, None
+
+
+@assets_bp.post("/movements/<movement_id>/approve")
+@roles_required("ADMIN")
+def approve_movement(movement_id):
+    row, error = movement_or_404(movement_id)
+    if error: return error
+    if row.status != 'REQUESTED': return jsonify(message="Solo se pueden aprobar solicitudes pendientes."), 409
+    row.status = 'APPROVED'; row.approved_by = current_user().id; row.approved_at = datetime.now(timezone.utc)
+    audit(current_user().id, 'APPROVE', 'MOVEMENT', row.id); db.session.commit(); return movement_dict(row)
+
+
+@assets_bp.post("/movements/<movement_id>/reject")
+@roles_required("ADMIN")
+def reject_movement(movement_id):
+    row, error = movement_or_404(movement_id)
+    if error: return error
+    if row.status != 'REQUESTED': return jsonify(message="Solo se pueden rechazar solicitudes pendientes."), 409
+    reason = required(data().get('reason'), 'reason', 5, 1000)
+    row.status = 'REJECTED'; row.rejection_reason = reason
+    audit(current_user().id, 'REJECT', 'MOVEMENT', row.id, {'reason': reason}); db.session.commit(); return movement_dict(row)
+
+
+@assets_bp.post("/movements/<movement_id>/deliver")
+@roles_required("ADMIN")
+def deliver_movement(movement_id):
+    row, error = movement_or_404(movement_id)
+    if error: return error
+    if row.status != 'APPROVED': return jsonify(message="Solo se pueden entregar movimientos aprobados."), 409
+    asset = db.session.get(Asset, row.asset_id)
+    asset.site = row.new_site or asset.site; asset.responsible_person = row.new_responsible or asset.responsible_person
+    row.status = 'DELIVERED'; row.delivered_at = datetime.now(timezone.utc)
+    audit(current_user().id, 'DELIVER', 'MOVEMENT', row.id, {'assetId': asset.id}); db.session.commit(); return movement_dict(row)

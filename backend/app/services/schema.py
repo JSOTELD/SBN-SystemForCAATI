@@ -1,6 +1,6 @@
 """Migración aditiva e idempotente de la entrega 2026-09-13.
 
-No elimina activos ni reconstruye el censo. Ejecutar con respaldo previo.
+No elimina activos ni modifica el censo. Ejecutar con respaldo previo.
 SQLAlchemy: https://docs.sqlalchemy.org/en/20/core/reflection.html
 """
 from sqlalchemy import inspect, text
@@ -15,6 +15,9 @@ def upgrade_schema():
         'assets': {'version': 'INTEGER NOT NULL DEFAULT 1'},
         'observations': {'version': 'INTEGER NOT NULL DEFAULT 1'},
         'inventory_checks': {'version': 'INTEGER NOT NULL DEFAULT 1', 'checked_by': 'VARCHAR(36) NULL'},
+        'movements': {'status': "VARCHAR(20) NOT NULL DEFAULT 'DELIVERED'", 'requested_at': 'DATETIME NULL',
+                      'approved_by': 'VARCHAR(36) NULL', 'approved_at': 'DATETIME NULL',
+                      'delivered_at': 'DATETIME NULL', 'rejection_reason': 'VARCHAR(1000) NULL'},
     }
     for table, fields in additions.items():
         existing = {c['name'] for c in inspector.get_columns(table)}
