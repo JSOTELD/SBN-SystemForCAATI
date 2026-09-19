@@ -1,4 +1,5 @@
 import json
+import tempfile
 from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.security import generate_password_hash
@@ -11,6 +12,23 @@ from ..services.research import is_strong_password
 from ..validation import ValidationFailure, data, required
 
 admin_bp=Blueprint("admin",__name__)
+
+@admin_bp.post('/patrimonial/import-preview')
+@roles_required('ADMIN')
+def patrimonial_import_preview():
+    upload = request.files.get('file')
+    if not upload or not upload.filename.lower().endswith(('.xlsx', '.xlsm')):
+        return jsonify(message='Adjunte un libro Excel .xlsx o .xlsm.'), 400
+    from ..services.patrimonial import import_workbook
+    suffix = Path(upload.filename).suffix.lower()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp:
+            upload.save(temp.name); path = temp.name
+        return import_workbook(path, current_user().id, dry_run=True)
+    except (OSError, ValueError) as error:
+        return jsonify(message=str(error)), 422
+    finally:
+        if 'path' in locals(): Path(path).unlink(missing_ok=True)
 
 @admin_bp.get('/backups')
 @roles_required('ADMIN')

@@ -110,7 +110,7 @@ async function navigate(screen) {
 async function dashboard(view) {
   const data = await request('/dashboard');
   const cards = [['Total', data.totals.total], ['Operativos', `${data.totals.operational} (${data.indicators?.operationalPercent || 0}%)`], ['Completos', `${data.totals.complete_consistent} (${data.indicators?.completePercent || 0}%)`], ['SBN verificados', `${data.totals.barcode_verified} (${data.indicators?.verifiedPercent || 0}%)`]];
-  view.innerHTML = `<div class="page-heading"><div><span class="eyebrow">GESTIÓN DE ACTIVOS TI</span><h2>Resumen operativo</h2><p>Control del ciclo de vida, estado y ubicación de activos tecnológicos físicos.</p></div><div class="page-actions">${state.user.role === 'ADMIN' ? '<button class="secondary" id="export-movements">Exportar movimientos CSV</button>' : ''}</div></div><div class="cards">${cards.map(([label, value], index) => `<div class="card stat-${index + 1}"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
+  view.innerHTML = `<div class="page-heading"><div><span class="eyebrow">GESTIÓN DE ACTIVOS TI</span><h2>Resumen operativo</h2><p>Control del ciclo de vida, estado y ubicación de activos tecnológicos físicos.</p></div><div class="page-actions">${state.user.role === 'ADMIN' ? '<button class="secondary" id="import-preview">Previsualizar Excel</button><button class="secondary" id="export-movements">Exportar movimientos CSV</button>' : ''}</div></div><div class="cards">${cards.map(([label, value], index) => `<div class="card stat-${index + 1}"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
     <div class="group-alert-summary"><div><strong>${data.grouping?.ungroupedComponents || 0}</strong><span>componentes sin agrupación</span></div><div><strong>${data.grouping?.incompleteGroups || 0}</strong><span>grupos incompletos</span></div><button class="primary" id="review-groups">Revisar agrupaciones</button></div>
     <section class="panel operational-alerts"><div class="section-title"><div><h3>Alertas operativas</h3><p class="muted">Prioriza los registros que requieren revisión.</p></div><span class="alert-total">${data.alertTotal || 0}</span></div><div class="alert-grid">${(data.alerts || []).map(alert => `<article class="alert-card ${escapeHtml(alert.severity || 'info')}"><div><strong>${escapeHtml(alert.label)}</strong><span>${alert.note ? escapeHtml(alert.note) : (alert.count ? 'Requiere revisión' : 'Sin pendientes')}</span></div><b>${alert.count}</b></article>`).join('')}</div></section>
     <div class="grid2"><section class="panel"><h3>Por tipo</h3>${data.byType.map(row => `<div class="row"><span>${escapeHtml(row.type)}</span><strong>${row.total}</strong></div>`).join('')}</section>
@@ -348,6 +348,14 @@ async function maintenance(view) {
     const dueDate = await uiPrompt('Fecha programada (AAAA-MM-DD)'); if (!dueDate) return;
     try { await request('/maintenance', { method: 'POST', body: JSON.stringify({ assetId, dueDate, planType: 'PREVENTIVE' }) }); await maintenance(view); }
     catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); }
+  };
+  const previewButton = view.querySelector('#import-preview');
+  if (previewButton) previewButton.onclick = async () => {
+    const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xlsm'; input.click();
+    input.onchange = async () => { if (!input.files[0]) return; previewButton.disabled = true; previewButton.textContent = 'Analizando...'; try {
+      const body = new FormData(); body.append('file', input.files[0]); const preview = await request('/patrimonial/import-preview', {method: 'POST', body});
+      view.insertAdjacentHTML('afterbegin', `<div class="alert info"><strong>Previsualización lista.</strong> Nuevos: ${preview.new_assets || 0} · Duplicados: ${preview.duplicate_assets || 0} · Cambios: ${preview.changed_assets || 0}. La base no fue modificada.</div>`);
+    } catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); } finally { previewButton.disabled = false; previewButton.textContent = 'Previsualizar Excel'; } };
   };
 }
 async function catalogs(view) { const rows = await request('/catalogs'); renderTable(view, 'Catálogos', ['Categoría', 'Código', 'Etiqueta'], rows.map(row => [row.category, row.code, row.label])); }
