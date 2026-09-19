@@ -77,9 +77,16 @@ def create_maintenance():
     except ValueError as error: raise ValidationFailure('dueDate debe ser una fecha ISO válida.') from error
     status = payload.get('status', 'PLANNED')
     if status not in {'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'}: raise ValidationFailure('Estado de mantenimiento no permitido.')
-    row = MaintenancePlan(asset_id=asset.id, plan_type=payload.get('planType', 'PREVENTIVE'), due_date=due_date,
+    plan_type = payload.get('planType', 'PREVENTIVE')
+    if plan_type not in {'PREVENTIVE', 'CORRECTIVE', 'INSPECTION'}: raise ValidationFailure('Tipo de plan no permitido.')
+    cost = payload.get('cost')
+    if cost not in (None, ''):
+        try: cost = float(cost)
+        except (TypeError, ValueError) as error: raise ValidationFailure('El costo debe ser numérico.') from error
+        if cost < 0: raise ValidationFailure('El costo no puede ser negativo.')
+    row = MaintenancePlan(asset_id=asset.id, plan_type=plan_type, due_date=due_date,
                           status=status, provider=payload.get('provider'), responsible=payload.get('responsible'),
-                          cost=payload.get('cost'), notes=payload.get('notes'))
+                          cost=cost, notes=payload.get('notes'))
     db.session.add(row); db.session.flush(); audit(current_user().id, 'CREATE', 'MAINTENANCE_PLAN', row.id); db.session.commit()
     return maintenance_dict(row), 201
 
@@ -92,8 +99,11 @@ def update_maintenance(plan_id):
     if not row: return jsonify(message='Plan de mantenimiento no encontrado.'), 404
     payload = data()
     if 'status' in payload and payload['status'] not in {'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'}: raise ValidationFailure('Estado no permitido.')
-    for key, field in [('status', 'status'), ('provider', 'provider'), ('responsible', 'responsible'), ('notes', 'notes'), ('cost', 'cost')]:
-        if key in payload: setattr(row, field, payload[key])
+    if 'planType' in payload and payload['planType'] not in {'PREVENTIVE', 'CORRECTIVE', 'INSPECTION'}: raise ValidationFailure('Tipo de plan no permitido.')
+    for key, field in [('status', 'status'), ('planType', 'plan_type'), ('provider', 'provider'), ('responsible', 'responsible'), ('notes', 'notes'), ('cost', 'cost')]:
+        if key in payload:
+            if key == 'cost' and payload[key] not in (None, '') and float(payload[key]) < 0: raise ValidationFailure('El costo no puede ser negativo.')
+            setattr(row, field, payload[key])
     if 'dueDate' in payload:
         try: row.due_date = datetime.fromisoformat(payload['dueDate'])
         except ValueError as error: raise ValidationFailure('dueDate debe ser una fecha ISO válida.') from error
