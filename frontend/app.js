@@ -4,13 +4,13 @@ const state = {
   token: null,
   user: null,
   screen: 'dashboard',
-  demoIndex: -1,
-  demoStep: 1,
+  scanIndex: -1,
+  flowStep: 1,
   pendingRegistrationSbn: null,
   pendingSbn: null,
   pendingGroupId: null,
-  pendingDemoValue: null,
-  demoCompletedGroup: null
+  pendingScanValue: null,
+  completedGroup: null
 };
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -112,6 +112,7 @@ async function dashboard(view) {
   const cards = [['Total', data.totals.total], ['Operativos', data.totals.operational], ['Completos', data.totals.complete_consistent], ['SBN verificados', data.totals.barcode_verified]];
   view.innerHTML = `<div class="page-heading"><div><span class="eyebrow">GESTIÓN DE ACTIVOS TI</span><h2>Resumen operativo</h2><p>Control del ciclo de vida, estado y ubicación de activos tecnológicos físicos.</p></div></div><div class="cards">${cards.map(([label, value], index) => `<div class="card stat-${index + 1}"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
     <div class="group-alert-summary"><div><strong>${data.grouping?.ungroupedComponents || 0}</strong><span>componentes sin agrupación</span></div><div><strong>${data.grouping?.incompleteGroups || 0}</strong><span>grupos incompletos</span></div><button class="primary" id="review-groups">Revisar agrupaciones</button></div>
+    <section class="panel operational-alerts"><div class="section-title"><div><h3>Alertas operativas</h3><p class="muted">Prioriza los registros que requieren revisión.</p></div><span class="alert-total">${data.alertTotal || 0}</span></div><div class="alert-grid">${(data.alerts || []).map(alert => `<article class="alert-card ${escapeHtml(alert.severity || 'info')}"><div><strong>${escapeHtml(alert.label)}</strong><span>${alert.note ? escapeHtml(alert.note) : (alert.count ? 'Requiere revisión' : 'Sin pendientes')}</span></div><b>${alert.count}</b></article>`).join('')}</div></section>
     <div class="grid2"><section class="panel"><h3>Por tipo</h3>${data.byType.map(row => `<div class="row"><span>${escapeHtml(row.type)}</span><strong>${row.total}</strong></div>`).join('')}</section>
     <section class="panel"><h3>Por sede</h3>${data.bySite.map(row => `<div class="row"><span>${escapeHtml(row.site)}</span><strong>${row.total}</strong></div>`).join('')}</section></div>
     <section class="panel" style="margin-top:18px"><h3>Actualizados recientemente</h3>${data.recent.map(asset => `<button class="row list-button" data-asset="${asset.id}"><span><strong>${asset.sbn}</strong><br>${escapeHtml(asset.description)}</span><span>${escapeHtml(asset.site)}</span></button>`).join('')}</section>`;
@@ -174,30 +175,30 @@ function typeLabel(type) {
     TYPE_1: 'Tipo 1', TYPE_2: 'Tipo 2', TYPE_3: 'Workstation', LAPTOP: 'Laptop', PRINTER: 'Impresora' })[type] || type;
 }
 
-function demoProgress(activeStep) {
+function flowProgress(activeStep) {
   const steps = [['1', 'Consultar'], ['2', 'Registrar'], ['3', 'Agrupar'], ['4', 'Finalizar']];
-  return `<section class="demo-flow"><div class="demo-flow-title"><span class="demo-mode">FLUJO</span><strong>Proceso de lectura y registro del código patrimonial</strong></div><div class="demo-steps">${steps.map(([number, label], index) => `<div class="demo-step ${index + 1 < activeStep ? 'done' : ''} ${index + 1 === activeStep ? 'active' : ''}"><span>${index + 1 < activeStep ? '✓' : number}</span><small>${label}</small></div>`).join('')}</div></section>`;
+  return `<section class="flow-progress"><div class="flow-title"><span class="flow-mode">FLUJO</span><strong>Proceso de lectura y registro del código patrimonial</strong></div><div class="flow-steps">${steps.map(([number, label], index) => `<div class="flow-step ${index + 1 < activeStep ? 'done' : ''} ${index + 1 === activeStep ? 'active' : ''}"><span>${index + 1 < activeStep ? '✓' : number}</span><small>${label}</small></div>`).join('')}</div></section>`;
 }
 
-function newDemoSbn() {
+function newScanSbn() {
   return `777${String(Date.now()).slice(-9)}`;
 }
 
 function scannerBox(inputId, context, title = 'Leer código SBN') {
-  return `<section class="scanner-box simulation-only"><div class="scanner-copy"><span class="scanner-icon">▥</span><div><span class="demo-mode light">LECTURA</span><strong>${title}</strong><p>Preparando la validación del código patrimonial.</p></div></div><button type="button" class="demo-scan-button" data-demo-for="${inputId}" data-context="${context}">▶ Iniciar lectura</button><div class="simulation-area hidden" id="simulation-${inputId}"><div class="barcode-simulation"><div class="barcode-bars"></div><strong></strong><small>Procesando etiqueta patrimonial…</small></div><div class="scan-line"></div></div><p class="scan-status" id="status-${inputId}"></p></section>`;
+  return `<section class="scanner-box reader-only"><div class="scanner-copy"><span class="scanner-icon">▥</span><div><span class="reader-mode light">LECTURA</span><strong>${title}</strong><p>Preparando la validación del código patrimonial.</p></div></div><button type="button" class="scan-button" data-reader-for="${inputId}" data-context="${context}">▶ Iniciar lectura</button><div class="reader-area hidden" id="reader-${inputId}"><div class="barcode-view"><div class="barcode-bars"></div><strong></strong><small>Procesando etiqueta patrimonial…</small></div><div class="scan-line"></div></div><p class="scan-status" id="status-${inputId}"></p></section>`;
 }
 
 function bindScanner(view, inputId, onDetected, valueProvider) {
-  const demoButton = view.querySelector(`[data-demo-for="${inputId}"]`);
-  const area = view.querySelector(`#simulation-${inputId}`);
+  const scanButton = view.querySelector(`[data-reader-for="${inputId}"]`);
+  const area = view.querySelector(`#reader-${inputId}`);
   const status = view.querySelector(`#status-${inputId}`);
-  demoButton.onclick = async () => {
-    const demoValues = ['888100000001', '888200000003', '888900000001', '888300000002'];
-    state.demoIndex = (state.demoIndex + 1) % demoValues.length;
-    const value = valueProvider ? valueProvider() : demoValues[state.demoIndex];
+  scanButton.onclick = async () => {
+    const scanValues = ['888100000001', '888200000003', '888900000001', '888300000002'];
+    state.scanIndex = (state.scanIndex + 1) % scanValues.length;
+    const value = valueProvider ? valueProvider() : scanValues[state.scanIndex];
     area.querySelector('strong').textContent = value;
     area.classList.remove('hidden');
-    demoButton.disabled = true;
+    scanButton.disabled = true;
     status.textContent = 'Leyendo la etiqueta SBN...';
     status.className = 'scan-status';
     await new Promise(resolve => setTimeout(resolve, 1400));
@@ -205,7 +206,7 @@ function bindScanner(view, inputId, onDetected, valueProvider) {
     input.value = value;
     input.dispatchEvent(new Event('change', { bubbles: true }));
     area.classList.add('hidden');
-    demoButton.disabled = false;
+    scanButton.disabled = false;
     status.textContent = `SBN ${value} detectado y completado.`;
     status.className = 'scan-status success-text';
     if (onDetected) await onDetected(value);
@@ -213,15 +214,15 @@ function bindScanner(view, inputId, onDetected, valueProvider) {
 }
 
 async function register(view) {
-  state.demoCompletedGroup = null;
+  state.completedGroup = null;
   const initialSbn = state.pendingRegistrationSbn || '';
   state.pendingRegistrationSbn = null;
-  state.demoStep = Math.max(state.demoStep, 2);
-  view.innerHTML = `${demoProgress(2)}<div class="page-heading"><span class="eyebrow">PASO 2 · NUEVO REGISTRO</span><h2>Registrar activo o componente</h2><p>El SBN se valida y los datos patrimoniales se completan en el formulario.</p></div><div id="form-message"></div><form class="panel asset-form" id="asset-form">${scannerBox('register-sbn', 'register', 'Leer una etiqueta SBN nueva')}<div class="form-helper"><div><strong>Datos del activo</strong><p>Puede completarlos manualmente o cargar un ejemplo de referencia.</p></div><button type="button" class="secondary" id="fill-demo">Completar datos de ejemplo</button></div><div class="form-grid">
+  state.flowStep = Math.max(state.flowStep, 2);
+  view.innerHTML = `${flowProgress(2)}<div class="page-heading"><span class="eyebrow">PASO 2 · NUEVO REGISTRO</span><h2>Registrar activo o componente</h2><p>El SBN se valida y los datos patrimoniales se completan en el formulario.</p></div><div id="form-message"></div><form class="panel asset-form" id="asset-form">${scannerBox('register-sbn', 'register', 'Leer una etiqueta SBN nueva')}<div class="form-helper"><div><strong>Datos del activo</strong><p>Puede completarlos manualmente o cargar un ejemplo de referencia.</p></div><button type="button" class="secondary" id="fill-reference">Completar datos de ejemplo</button></div><div class="form-grid">
     <label class="field">Código SBN<input id="register-sbn" name="sbn" value="${escapeHtml(initialSbn)}" pattern="[A-Za-z0-9]{12}" maxlength="12" placeholder="000000000000" required></label><label class="field">Clase de activo<select name="assetType"><option value="MONITOR">Monitor / pantalla</option><option value="KEYBOARD">Teclado</option><option value="CPU">CPU de escritorio / workstation</option><option value="ALL_IN_ONE">All in One con procesador integrado</option><option value="LAPTOP">Laptop</option><option value="PRINTER">Impresora</option></select></label>
     <label class="field full">Descripción<input name="description" minlength="3" required></label><label class="field">Marca<input name="brand"></label><label class="field">Modelo<input name="model"></label><label class="field">Serie<input name="serialNumber"></label><label class="field">Unidad ejecutora<input name="executingUnit"></label><label class="field">Sede<input name="site" required></label><label class="field">Responsable<input name="responsiblePerson"></label>
     <label class="field">Estado<select name="status"><option>OPERATIVO</option><option>MANTENIMIENTO</option><option>BAJA</option><option>NO_OPERATIVO</option><option>INOPERATIVO</option><option>SIN_DATO</option></select></label><label class="field">Condición<select name="condition"><option>BUENO</option><option>REGULAR</option><option>MALO</option><option>NUEVO</option><option>FALTANTE</option></select></label></div><button class="primary">Guardar y continuar a agrupación →</button></form>`;
-  view.querySelector('#fill-demo').onclick = () => {
+  view.querySelector('#fill-reference').onclick = () => {
     const form = view.querySelector('#asset-form');
     form.elements.assetType.value = 'MONITOR';
     form.elements.description.value = 'Monitor empresarial';
@@ -238,36 +239,36 @@ async function register(view) {
     try {
       const created = await request('/assets', { method: 'POST', body: JSON.stringify(payload) });
       state.pendingSbn = created.sbn;
-      state.demoStep = 3;
+      state.flowStep = 3;
       navigate('groups');
     }
     catch (error) { view.querySelector('#form-message').innerHTML = notice(error.message); }
   };
-  bindScanner(view, 'register-sbn', null, () => initialSbn || newDemoSbn());
+  bindScanner(view, 'register-sbn', null, () => initialSbn || newScanSbn());
 }
 
 async function scanner(view) {
-  state.demoCompletedGroup = null;
+  state.completedGroup = null;
   state.pendingGroupId = null;
-  state.demoStep = 1;
-  view.innerHTML = `${demoProgress(1)}<div class="page-heading"><span class="eyebrow">PASO 1 · CONSULTA</span><h2>Consultar activo por SBN</h2><p>Seleccione el tipo de consulta o introduzca el código patrimonial para continuar.</p></div><section class="demo-scenarios"><button class="scenario-card existing" id="demo-existing"><span>✓</span><div><strong>Activo inventariado</strong><small>Busca un SBN ya dado de alta y verifica su agrupación.</small></div></button><button class="scenario-card new" id="demo-new"><span>＋</span><div><strong>Etiqueta nueva</strong><small>Si no existe, se habilita el alta del registro.</small></div></button></section><section class="panel scan-panel">${scannerBox('query-sbn', 'query')}<form id="scan"><label class="field">Código SBN<input id="query-sbn" name="sbn" pattern="[A-Za-z0-9]{12}" maxlength="12" placeholder="Ingrese el código patrimonial" required></label><button class="primary wide">Consultar en inventario</button></form><div id="result"></div></section>`;
-  const findAsset = async value => { const result = view.querySelector('#result'); result.innerHTML = '<p class="loading">Consultando inventario…</p>'; try { const asset = await request('/assets/sbn/' + value); result.innerHTML = `<article class="scan-result"><div class="result-head"><span class="result-check">✓</span><div><span class="eyebrow">ACTIVO INVENTARIADO</span><h3>${escapeHtml(asset.description)}</h3><strong class="sbn-large">${asset.sbn}</strong></div></div>${asset.groupingAlert ? '<div class="alert warning"><strong>⚠ Alerta de agrupación:</strong> este componente está registrado, pero no pertenece a ningún equipo.</div>' : asset.assetGroup ? `<div class="alert success">✓ Agrupado en <strong>${escapeHtml(asset.assetGroup.code)}</strong> · ${escapeHtml(asset.assetGroup.name)}</div>` : ''}<div class="result-grid"><span>Tipo<strong>${typeLabel(asset.assetType)}</strong></span><span>Marca / modelo<strong>${escapeHtml(asset.brand || '—')} ${escapeHtml(asset.model || '')}</strong></span><span>Sede<strong>${escapeHtml(asset.site)}</strong></span><span>Responsable<strong>${escapeHtml(asset.responsiblePerson || 'Sin asignar')}</strong></span></div><div class="actions"><button class="primary" id="open">Ver ficha completa</button>${asset.groupingAlert ? '<button class="secondary" id="group-result">Continuar y agrupar →</button>' : ''}</div></article>`; result.querySelector('#open').onclick = () => assetDetail(view, asset.id); const groupButton = result.querySelector('#group-result'); if (groupButton) groupButton.onclick = () => { state.pendingSbn = asset.sbn; state.demoStep = 3; navigate('groups'); }; } catch (error) { state.pendingRegistrationSbn = value; result.innerHTML = `<div class="not-found"><span>×</span><h3>SBN no inventariado</h3><p>${escapeHtml(error.message)}</p><div class="alert info">La etiqueta no existe en el inventario y debe darse de alta antes de agruparla.</div><button class="primary" id="register-result">Registrar este SBN →</button></div>`; result.querySelector('#register-result').onclick = () => { state.demoStep = 2; navigate('register'); }; } };
+  state.flowStep = 1;
+  view.innerHTML = `${flowProgress(1)}<div class="page-heading"><span class="eyebrow">PASO 1 · CONSULTA</span><h2>Consultar activo por SBN</h2><p>Seleccione el tipo de consulta o introduzca el código patrimonial para continuar.</p></div><section class="scan-scenarios"><button class="scenario-card existing" id="existing-asset"><span>✓</span><div><strong>Activo inventariado</strong><small>Busca un SBN ya dado de alta y verifica su agrupación.</small></div></button><button class="scenario-card new" id="new-asset"><span>＋</span><div><strong>Etiqueta nueva</strong><small>Si no existe, se habilita el alta del registro.</small></div></button></section><section class="panel scan-panel">${scannerBox('query-sbn', 'query')}<form id="scan"><label class="field">Código SBN<input id="query-sbn" name="sbn" pattern="[A-Za-z0-9]{12}" maxlength="12" placeholder="Ingrese el código patrimonial" required></label><button class="primary wide">Consultar en inventario</button></form><div id="result"></div></section>`;
+  const findAsset = async value => { const result = view.querySelector('#result'); result.innerHTML = '<p class="loading">Consultando inventario…</p>'; try { const asset = await request('/assets/sbn/' + value); result.innerHTML = `<article class="scan-result"><div class="result-head"><span class="result-check">✓</span><div><span class="eyebrow">ACTIVO INVENTARIADO</span><h3>${escapeHtml(asset.description)}</h3><strong class="sbn-large">${asset.sbn}</strong></div></div>${asset.groupingAlert ? '<div class="alert warning"><strong>⚠ Alerta de agrupación:</strong> este componente está registrado, pero no pertenece a ningún equipo.</div>' : asset.assetGroup ? `<div class="alert success">✓ Agrupado en <strong>${escapeHtml(asset.assetGroup.code)}</strong> · ${escapeHtml(asset.assetGroup.name)}</div>` : ''}<div class="result-grid"><span>Tipo<strong>${typeLabel(asset.assetType)}</strong></span><span>Marca / modelo<strong>${escapeHtml(asset.brand || '—')} ${escapeHtml(asset.model || '')}</strong></span><span>Sede<strong>${escapeHtml(asset.site)}</strong></span><span>Responsable<strong>${escapeHtml(asset.responsiblePerson || 'Sin asignar')}</strong></span></div><div class="actions"><button class="primary" id="open">Ver ficha completa</button>${asset.groupingAlert ? '<button class="secondary" id="group-result">Continuar y agrupar →</button>' : ''}</div></article>`; result.querySelector('#open').onclick = () => assetDetail(view, asset.id); const groupButton = result.querySelector('#group-result'); if (groupButton) groupButton.onclick = () => { state.pendingSbn = asset.sbn; state.flowStep = 3; navigate('groups'); }; } catch (error) { state.pendingRegistrationSbn = value; result.innerHTML = `<div class="not-found"><span>×</span><h3>SBN no inventariado</h3><p>${escapeHtml(error.message)}</p><div class="alert info">La etiqueta no existe en el inventario y debe darse de alta antes de agruparla.</div><button class="primary" id="register-result">Registrar este SBN →</button></div>`; result.querySelector('#register-result').onclick = () => { state.flowStep = 2; navigate('register'); }; } };
   view.querySelector('#scan').onsubmit = event => { event.preventDefault(); findAsset(new FormData(event.target).get('sbn')); };
-  const runScenario = async (value, button) => {
+  <button type="button" class="secondary" id="fill-reference">Completar datos de referencia</button></div><div class="form-grid">
     view.querySelector('#query-sbn').value = value;
-    state.pendingDemoValue = value;
+    state.pendingScanValue = value;
     button.disabled = true;
     button.classList.add('running');
-    const simulatorButton = view.querySelector('[data-demo-for="query-sbn"]');
-    simulatorButton.click();
+    const readerButton = view.querySelector('[data-reader-for="query-sbn"]');
+    readerButton.click();
     button.disabled = false;
     button.classList.remove('running');
   };
-  view.querySelector('#demo-existing').onclick = event => runScenario('888900000001', event.currentTarget);
-  view.querySelector('#demo-new').onclick = event => runScenario(newDemoSbn(), event.currentTarget);
-  const simulator = view.querySelector('[data-demo-for="query-sbn"]');
-  const originalProvider = () => state.pendingDemoValue || ['888100000001', '888200000003', '888900000001', '888300000002'][state.demoIndex];
-  bindScanner(view, 'query-sbn', async value => { state.pendingDemoValue = null; await findAsset(value); }, originalProvider);
+  view.querySelector('#existing-asset').onclick = event => runScenario('888900000001', event.currentTarget);
+  view.querySelector('#new-asset').onclick = event => runScenario(newScanSbn(), event.currentTarget);
+  const reader = view.querySelector('[data-reader-for="query-sbn"]');
+  const originalProvider = () => state.pendingScanValue || ['888100000001', '888200000003', '888900000001', '888300000002'][state.scanIndex];
+  bindScanner(view, 'query-sbn', async value => { state.pendingScanValue = null; await findAsset(value); }, originalProvider);
 }
 
 async function indicators(view) {
@@ -286,10 +287,10 @@ async function groups(view) {
   const [groups, assetsData] = await Promise.all([request('/asset-groups'), request('/assets?pageSize=500&ungrouped=1')]);
   const ungrouped = assetsData.items.filter(asset => asset.groupingAlert);
   const pending = state.pendingSbn || ungrouped[0]?.sbn || '';
-  const completed = state.demoCompletedGroup;
+  const completed = state.completedGroup;
   const activeStep = completed ? 4 : 3;
-  state.demoStep = activeStep;
-  view.innerHTML = `${demoProgress(activeStep)}${completed ? `<section class="demo-complete"><span>✓</span><div><strong>Operación completada</strong><p>El SBN fue consultado, registrado y agregado al grupo <b>${escapeHtml(completed.code)}</b>.</p></div><button class="secondary" id="restart-demo">Reiniciar flujo</button></section>` : ''}<div class="page-heading"><span class="eyebrow">PASO ${activeStep} · CONFIGURACIÓN DE PUESTOS</span><h2>Agrupaciones de activos</h2><p>Revise el componente y asígnelo al equipo correspondiente.</p></div>
+  state.flowStep = activeStep;
+  view.innerHTML = `${flowProgress(activeStep)}${completed ? `<section class="flow-complete"><span>✓</span><div><strong>Operación completada</strong><p>El SBN fue consultado, registrado y agregado al grupo <b>${escapeHtml(completed.code)}</b>.</p></div><button class="secondary" id="restart-flow">Reiniciar flujo</button></section>` : ''}<div class="page-heading"><span class="eyebrow">PASO ${activeStep} · CONFIGURACIÓN DE PUESTOS</span><h2>Agrupaciones de activos</h2><p>Revise el componente y asígnelo al equipo correspondiente.</p></div>
     <div class="group-layout"><section><div class="section-title"><h3>Equipos agrupados</h3><span>${groups.length} grupos</span></div><div class="group-cards">${groups.map(group => `<article class="group-card ${group.complete ? 'complete' : 'incomplete'}"><header><div><span class="group-type">${group.groupType === 'ALL_IN_ONE' ? 'ALL IN ONE' : group.groupType === 'TYPE_2' ? 'PC TIPO 2' : 'WORKSTATION TIPO 3'}</span><h3>${escapeHtml(group.name)}</h3><code>${group.code}</code></div><span class="completion">${group.complete ? '✓ Completo' : '⚠ Incompleto'}</span></header><div class="component-list">${group.members.map(member => `<div><span>${member.componentRole === 'INTEGRATED_UNIT' ? 'Pantalla + procesador' : typeLabel(member.componentRole)}</span><strong>${member.sbn}</strong><small>${escapeHtml(member.description)}</small></div>`).join('')}${group.missingRoles.map(role => `<div class="missing"><span>${role === 'INTEGRATED_UNIT' ? 'Pantalla + procesador' : typeLabel(role)}</span><strong>Componente faltante</strong></div>`).join('')}</div></article>`).join('')}</div></section>
     <aside><section class="panel sticky-panel"><h3>Agrupar componente</h3><p class="muted">Identifique el componente y asócielo al grupo correcto.</p><div id="group-message"></div>${scannerBox('group-sbn', 'group', 'Leer código del componente')}<form id="member-form"><label class="field">SBN detectado<input id="group-sbn" name="sbn" value="" placeholder="Ingrese el SBN o lea la etiqueta" required></label><label class="field">Grupo de destino<select name="groupId" id="target-group">${groups.map(group => `<option value="${group.id}" data-type="${group.groupType}" ${String(group.id) === String(state.pendingGroupId) ? 'selected' : ''}>${group.code} · ${escapeHtml(group.name)}</option>`).join('')}</select></label><label class="field">Función del componente<select name="componentRole" id="component-role"></select></label><button class="primary wide" ${!groups.length ? 'disabled' : ''}>Guardar agrupación y finalizar</button></form><hr><h3>Crear grupo nuevo</h3><p class="muted">Cree un puesto vacío y luego agregue el componente identificado.</p><form id="new-group"><label class="field">Código<input name="code" value="GR-${String(Date.now()).slice(-5)}" required></label><label class="field">Tipo<select name="groupType"><option value="TYPE_2">PC Tipo 2</option><option value="TYPE_3">Workstation Tipo 3</option><option value="ALL_IN_ONE">All in One</option></select></label><label class="field">Nombre<input name="name" value="Puesto de trabajo" required></label><label class="field">Sede<input name="site" value="Sede Central" required></label><button class="secondary wide">Crear grupo vacío</button></form></section></aside></div>
     <section class="panel orphan-panel"><h3>⚠ Componentes pendientes de agrupación</h3><p class="muted">Se muestran hasta 500 pendientes. Puede indicar cualquier SBN inventariado.</p>${ungrouped.length ? `<div class="orphan-grid">${ungrouped.map(asset => `<button data-orphan="${asset.sbn}"><strong>${asset.sbn}</strong><span>${typeLabel(asset.assetType)}</span><small>${escapeHtml(asset.description)}</small></button>`).join('')}</div>` : '<div class="alert success">No hay componentes pendientes en esta consulta.</div>'}</section>`;
@@ -298,9 +299,9 @@ async function groups(view) {
   refreshRoles(); groupSelect.onchange = refreshRoles;
   bindScanner(view, 'group-sbn', refreshRoles, () => pending);
   view.querySelectorAll('[data-orphan]').forEach(button => button.onclick = () => { state.pendingSbn = button.dataset.orphan; navigate('groups'); });
-  view.querySelector('#member-form').onsubmit = async event => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.target)); try { const result = await request(`/asset-groups/${values.groupId}/members`, { method: 'POST', body: JSON.stringify({ sbn: values.sbn, componentRole: values.componentRole }) }); state.demoCompletedGroup = result; state.pendingSbn = null; state.pendingGroupId = null; state.demoStep = 4; navigate('groups'); } catch (error) { view.querySelector('#group-message').innerHTML = notice(error.message); } };
+  view.querySelector('#member-form').onsubmit = async event => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.target)); try { const result = await request(`/asset-groups/${values.groupId}/members`, { method: 'POST', body: JSON.stringify({ sbn: values.sbn, componentRole: values.componentRole }) }); state.completedGroup = result; state.pendingSbn = null; state.pendingGroupId = null; state.flowStep = 4; navigate('groups'); } catch (error) { view.querySelector('#group-message').innerHTML = notice(error.message); } };
   view.querySelector('#new-group').onsubmit = async event => { event.preventDefault(); try { const result = await request('/asset-groups', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); state.pendingSbn = pending; state.pendingGroupId = result.id; navigate('groups'); } catch (error) { view.querySelector('#group-message').innerHTML = notice(error.message); } };
-  const restart = view.querySelector('#restart-demo'); if (restart) restart.onclick = () => { state.demoCompletedGroup = null; state.pendingSbn = null; state.pendingGroupId = null; state.demoStep = 1; navigate('scanner'); };
+  const restart = view.querySelector('#restart-flow'); if (restart) restart.onclick = () => { state.completedGroup = null; state.pendingSbn = null; state.pendingGroupId = null; state.flowStep = 1; navigate('scanner'); };
 }
 
 async function inventory(view) {
