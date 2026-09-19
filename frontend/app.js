@@ -357,9 +357,9 @@ async function maintenance(view) {
 }
 async function catalogs(view) { const rows = await request('/catalogs'); renderTable(view, 'Catálogos', ['Categoría', 'Código', 'Etiqueta'], rows.map(row => [row.category, row.code, row.label])); }
 async function audit(view) {
-  view.innerHTML = `<div class="toolbar"><h2>Auditor?a</h2><span id="audit-count" class="muted"></span></div><div class="filters"><input id="audit-action" placeholder="Acci?n (CREATE, UPDATE...)" maxlength="40"><input id="audit-entity" placeholder="Entidad (ASSET, MOVEMENT...)" maxlength="40"><button class="primary" id="audit-search">Buscar</button></div><div id="audit-table"></div>`;
+  view.innerHTML = `<div class="toolbar"><h2>Auditoria</h2><div class="page-actions"><button class="secondary" id="audit-export">Exportar CSV</button><span id="audit-count" class="muted"></span></div></div><div class="filters"><input id="audit-action" placeholder="Acci?n (CREATE, UPDATE...)" maxlength="40"><input id="audit-entity" placeholder="Entidad (ASSET, MOVEMENT...)" maxlength="40"><button class="primary" id="audit-search">Buscar</button></div><div id="audit-table"></div>`;
   const load = async () => { const query = new URLSearchParams({action: view.querySelector('#audit-action').value, entityType: view.querySelector('#audit-entity').value, limit: '200'}); const rows = await request('/audit-logs?' + query); view.querySelector('#audit-count').textContent = `${rows.length} eventos`; renderTable(view.querySelector('#audit-table'), '', ['Fecha', 'Acci?n', 'Entidad', 'IP'], rows.map(row => [row.created_at, row.action, row.entity_type, row.ip_address || '?'])); };
-  view.querySelector('#audit-search').onclick = load; await load();
+  view.querySelector('#audit-search').onclick = load; view.querySelector('#audit-export').onclick = () => { const q=new URLSearchParams({action:view.querySelector('#audit-action').value,entityType:view.querySelector('#audit-entity').value,limit:'1000'}); window.location.href=API+'/audit-logs.csv?'+q; }; await load();
 }
 function renderTable(view, title, headers, rows) { view.innerHTML = `<h2>${title}</h2><div class="table-wrap"><table><thead><tr>${headers.map(value => `<th>${value}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; }
 
