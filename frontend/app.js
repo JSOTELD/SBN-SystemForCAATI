@@ -368,5 +368,5 @@ async function settings(view) {
   view.querySelector('#password').onsubmit = async event => { event.preventDefault(); try { await request('/auth/change-password', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); view.querySelector('#settings-message').innerHTML = notice('Contraseña actualizada. Inicie sesión nuevamente.', 'success'); setTimeout(logout, 1200); } catch (error) { view.querySelector('#settings-message').innerHTML = notice(error.message); } };
 }
 
-const screens = { dashboard, assets, register, scanner, groups, inventory, maintenance, movements, research, indicators, users, catalogs, audit, settings };
+var screens = { dashboard, assets, register, scanner, groups, inventory, maintenance, movements, research, indicators, users, catalogs, audit, settings };
 // Inicio de sesión recuperado mediante cookie HttpOnly en portal.js.
