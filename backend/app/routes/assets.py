@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request
+import csv
+import io
+from flask import Blueprint, Response, jsonify, request
 from sqlalchemy import func, or_
 
 from ..extensions import db
@@ -212,6 +214,23 @@ def movements():
     asset_id = request.args.get("assetId"); query = db.select(Movement).order_by(Movement.created_at.desc())
     if asset_id: query = query.where(Movement.asset_id == asset_id)
     return [movement_dict(row) for row in db.session.scalars(query.limit(500)).all()]
+
+
+@assets_bp.get("/movements.csv")
+@roles_required("ADMIN")
+def movements_csv():
+    rows = db.session.scalars(db.select(Movement).order_by(Movement.created_at.desc()).limit(5000)).all()
+    output = io.StringIO(); writer = csv.writer(output)
+    writer.writerow(['id', 'asset_id', 'movement_type', 'status', 'previous_site', 'new_site',
+                     'previous_responsible', 'new_responsible', 'reason', 'support_document',
+                     'requested_at', 'approved_at', 'delivered_at', 'rejection_reason', 'created_at'])
+    for row in rows:
+        item = movement_dict(row)
+        writer.writerow([item.get(key) for key in ('id', 'asset_id', 'movement_type', 'status', 'previous_site', 'new_site',
+                                                   'previous_responsible', 'new_responsible', 'reason', 'support_document',
+                                                   'requested_at', 'approved_at', 'delivered_at', 'rejection_reason', 'created_at')])
+    return Response('\ufeff' + output.getvalue(), mimetype='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': 'attachment; filename=movimientos.csv'})
 
 
 @assets_bp.post("/movements")
