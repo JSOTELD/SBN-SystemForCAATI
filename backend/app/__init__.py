@@ -1,7 +1,9 @@
 import os
+import time
+import uuid
 from pathlib import Path
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 from sqlalchemy.exc import IntegrityError
 
@@ -21,6 +23,21 @@ def create_app(config_name=None):
     jwt.init_app(app)
     migrate.init_app(app, db)
     CORS(app, origins=app.config["CORS_ORIGINS"], supports_credentials=True)
+
+    @app.before_request
+    def request_context():
+        g.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:16]
+        g.request_started_at = time.perf_counter()
+
+    @app.after_request
+    def request_observability(response):
+        request_id = getattr(g, "request_id", None)
+        if request_id:
+            response.headers["X-Request-ID"] = request_id
+            elapsed_ms = (time.perf_counter() - getattr(g, "request_started_at", time.perf_counter())) * 1000
+            app.logger.info("request_id=%s method=%s path=%s status=%s duration_ms=%.1f",
+                            request_id, request.method, request.path, response.status_code, elapsed_ms)
+        return response
 
     from sqlalchemy.orm.exc import StaleDataError
     @app.errorhandler(StaleDataError)
