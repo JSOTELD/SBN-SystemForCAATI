@@ -226,6 +226,48 @@ def init_commands(app):
             db.session.rollback()
             click.echo('Simulación completada. Usa --apply para confirmar.')
 
+    @app.cli.command('seed-synthetic-inventory')
+    @click.option('--username', default='usuario', show_default=True)
+    @click.option('--apply', is_flag=True, help='Inserta las verificaciones sintéticas.')
+    def seed_synthetic_inventory(username, apply):
+        """Simula jornadas asignadas, sin fotografías ni datos personales."""
+        from .models import InventorySession, InventoryAssignment, InventoryCheck, Asset, AuditLog
+        user = db.session.scalar(db.select(User).where(User.username == username, User.role == 'INVENTORY'))
+        if not user:
+            raise click.ClickException('Usuario operativo no encontrado.')
+        sessions = db.session.scalars(db.select(InventorySession).join(InventoryAssignment).where(InventoryAssignment.user_id == user.id, InventorySession.status == 'OPEN')).all()
+        planned = []
+        for session in sessions:
+            assets = db.session.scalars(db.select(Asset).where(Asset.site == session.site).order_by(Asset.sbn)).all()
+            existing = {row.asset_id for row in db.session.scalars(db.select(InventoryCheck).where(InventoryCheck.session_id == session.id)).all()}
+            planned.extend((session, asset) for asset in assets if asset.id not in existing)
+            click.echo(f'{session.name}: {len(assets) - len(existing)} verificaciones pendientes de simular.')
+        if not apply:
+            click.echo(f'Total: {len(planned)}. Simulación completada. Usa --apply para confirmar.')
+            return
+        for session, asset in planned:
+            # Deterministic, reproducible distribution: mostly matches, some differences.
+            mismatch = int(asset.sbn[-1], 36) % 11 == 0
+            db.session.add(InventoryCheck(session_id=session.id, asset_id=asset.id,
+                result='MISMATCH' if mismatch else 'MATCH', checked_by=user.id, scanned_sbn=asset.sbn,
+                notes='[SYNTHETIC] Verificación física simulada; reemplazar con resultado ministerial.' if mismatch else '[SYNTHETIC] Coincidencia simulada; reemplazar con verificación ministerial.'))
+        db.session.add(AuditLog(user_id=user.id, action='SEED_SYNTHETIC_INVENTORY', entity_type='INVENTORY_CHECK',
+                                details={'username': username, 'checks': len(planned), 'warning': 'Synthetic data; replace before official use.'}))
+        db.session.commit(); click.echo(f'Verificaciones sintéticas insertadas: {len(planned)}.')
+
+    @app.cli.command('purge-synthetic-inventory')
+    @click.option('--apply', is_flag=True, help='Elimina verificaciones físicas marcadas SYNTHETIC.')
+    def purge_synthetic_inventory(apply):
+        """Elimina solo verificaciones físicas explícitamente sintéticas."""
+        from .models import InventoryCheck
+        rows = db.session.scalars(db.select(InventoryCheck).where(InventoryCheck.notes.like('[SYNTHETIC]%'))).all()
+        click.echo(f'Verificaciones sintéticas encontradas: {len(rows)}.')
+        if apply:
+            for row in rows: db.session.delete(row)
+            db.session.commit(); click.echo('Verificaciones sintéticas eliminadas.')
+        else:
+            db.session.rollback(); click.echo('Simulación completada. Usa --apply para confirmar.')
+
     @app.cli.command('disable-account')
     @click.argument('username')
     def disable_account(username):
