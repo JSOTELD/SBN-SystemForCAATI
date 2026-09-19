@@ -96,11 +96,24 @@ def import_workbook(path, user_id, dry_run=False):
               'sample': len(sample), 'excluded': len(archive['04_Exclusiones']) - 3,
               'by_type': dict(Counter(a['asset_type'] for a in values)),
               'alphanumeric_codes': sum(not a['sbn'].isdigit() for a in values)}
+    existing = {a.sbn: a for a in db.session.scalars(db.select(Asset)).all()}
+    incoming = {a['sbn']: a for a in values}
+    duplicates = sorted(set(existing) & set(incoming))
+    changed = []
+    for code in duplicates:
+        current = existing[code]
+        differences = {field: {'current': getattr(current, field), 'incoming': incoming[code][field]}
+                       for field in ('internal_code', 'asset_type', 'description', 'site', 'status', 'condition')
+                       if getattr(current, field) != incoming[code][field]}
+        if differences:
+            changed.append({'sbn': code, 'fields': differences})
+    report.update({'existing_assets': len(existing), 'new_assets': len(values) - len(duplicates),
+                   'duplicate_assets': len(duplicates), 'changed_assets': len(changed),
+                   'changed_preview': changed[:100], 'blocked_by_existing': bool(duplicates)})
     if dry_run:
         return report
     if db.session.get(PatrimonialImport, digest):
         return {**report, 'already_imported': True}
-    existing = {a.sbn: a for a in db.session.scalars(db.select(Asset)).all()}
     # No sobrescribir registros posteriores ni reemplazar una muestra en uso.
     conflicts = set(existing) & {a['sbn'] for a in values}
     if conflicts or db.session.scalar(db.select(ResearchSample.asset_id).limit(1)):
