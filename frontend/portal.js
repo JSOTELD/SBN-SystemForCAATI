@@ -6,7 +6,7 @@ const roleNames = {ADMIN: 'Administrador', INVENTORY: 'Usuario operativo', RESEA
 function homeScreen() { return state.user?.role === 'RESEARCHER' ? 'research' : state.user?.role === 'INVENTORY' ? 'inventory' : state.user?.role === 'VIEWER' ? 'assets' : 'dashboard'; }
 function visibleMenu() {
   const permissions = {
-    ADMIN: ['dashboard', 'assets', 'register', 'scanner', 'groups', 'inventory', 'users', 'catalogs', 'audit', 'settings'],
+    ADMIN: ['dashboard', 'assets', 'register', 'scanner', 'groups', 'inventory', 'maintenance', 'users', 'catalogs', 'audit', 'settings'],
     INVENTORY: ['inventory', 'assets', 'scanner', 'settings'],
     RESEARCHER: ['research', 'indicators', 'assets', 'scanner', 'studyAudit', 'settings'],
     VIEWER: ['assets', 'scanner', 'settings']

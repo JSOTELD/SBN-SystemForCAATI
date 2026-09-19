@@ -78,7 +78,7 @@ function renderLogin() {
 
 const menu = [
   ['dashboard', '▦  Panel de control'], ['assets', '▣  Activos TI'], ['register', '＋  Registrar activo'],
-  ['scanner', 'Consultar etiqueta'], ['groups', '⌘  Agrupaciones'], ['inventory', 'Verificación física'], ['research', 'Cobertura operativa'], ['indicators', 'Indicadores'], ['users', 'Usuarios'], ['catalogs', 'Catálogos'], ['audit', 'Auditoría'], ['settings', '⚙  Configuración']
+  ['scanner', 'Consultar etiqueta'], ['groups', '⌘  Agrupaciones'], ['inventory', 'Verificación física'], ['maintenance', 'Mantenimiento'], ['research', 'Cobertura operativa'], ['indicators', 'Indicadores'], ['users', 'Usuarios'], ['catalogs', 'Catálogos'], ['audit', 'Auditoría'], ['settings', '⚙  Configuración']
 ];
 
 function renderShell() {
@@ -324,6 +324,16 @@ async function inventory(view) {
 }
 
 async function users(view) { const rows = await request('/users'); renderTable(view, 'Usuarios', ['Usuario', 'Nombre', 'Correo', 'Rol'], rows.map(row => [row.username, row.fullName, row.email, row.role])); }
+async function maintenance(view) {
+  const rows = await request('/maintenance');
+  view.innerHTML = `<div class="toolbar"><div><h2>Mantenimiento preventivo</h2><p class="muted">Planifique intervenciones y atienda vencimientos.</p></div><button class="primary" id="new-maintenance">Nuevo plan</button></div><div class="cards"><div class="card">Planes<strong>${rows.length}</strong></div><div class="card">Vencidos<strong>${rows.filter(row => row.overdue).length}</strong></div><div class="card">Completados<strong>${rows.filter(row => row.status === 'COMPLETED').length}</strong></div></div><div class="table-wrap"><table><thead><tr><th>Activo</th><th>Fecha</th><th>Estado</th><th>Responsable</th><th>Proveedor</th></tr></thead><tbody>${rows.map(row => `<tr class="${row.overdue ? 'warning-row' : ''}"><td><strong>${escapeHtml(row.sbn || 'Sin activo')}</strong><small>${escapeHtml(row.description || '')}</small></td><td>${escapeHtml(row.dueDate.slice(0, 10))}${row.overdue ? ' - Vencido' : ''}</td><td><span class="badge">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.responsible || '-')}</td><td>${escapeHtml(row.provider || '-')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No hay planes registrados.</td></tr>'}</tbody></table></div>`;
+  view.querySelector('#new-maintenance').onclick = async () => {
+    const assetId = await uiPrompt('ID del activo'); if (!assetId) return;
+    const dueDate = await uiPrompt('Fecha programada (AAAA-MM-DD)'); if (!dueDate) return;
+    try { await request('/maintenance', { method: 'POST', body: JSON.stringify({ assetId, dueDate, planType: 'PREVENTIVE' }) }); await maintenance(view); }
+    catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); }
+  };
+}
 async function catalogs(view) { const rows = await request('/catalogs'); renderTable(view, 'Catálogos', ['Categoría', 'Código', 'Etiqueta'], rows.map(row => [row.category, row.code, row.label])); }
 async function audit(view) { const rows = await request('/audit-logs'); renderTable(view, 'Auditoría', ['Fecha', 'Acción', 'Entidad', 'IP'], rows.map(row => [row.created_at, row.action, row.entity_type, row.ip_address || '—'])); }
 function renderTable(view, title, headers, rows) { view.innerHTML = `<h2>${title}</h2><div class="table-wrap"><table><thead><tr>${headers.map(value => `<th>${value}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; }
@@ -333,5 +343,5 @@ async function settings(view) {
   view.querySelector('#password').onsubmit = async event => { event.preventDefault(); try { await request('/auth/change-password', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); view.querySelector('#settings-message').innerHTML = notice('Contraseña actualizada. Inicie sesión nuevamente.', 'success'); setTimeout(logout, 1200); } catch (error) { view.querySelector('#settings-message').innerHTML = notice(error.message); } };
 }
 
-const screens = { dashboard, assets, register, scanner, groups, inventory, research, indicators, users, catalogs, audit, settings };
+const screens = { dashboard, assets, register, scanner, groups, inventory, maintenance, research, indicators, users, catalogs, audit, settings };
 // Inicio de sesión recuperado mediante cookie HttpOnly en portal.js.
