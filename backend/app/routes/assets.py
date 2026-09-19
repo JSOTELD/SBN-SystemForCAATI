@@ -42,6 +42,21 @@ def maintenance_list():
     return result
 
 
+@assets_bp.get('/maintenance.csv')
+@auth_required
+def maintenance_csv():
+    rows = db.session.scalars(db.select(MaintenancePlan).order_by(MaintenancePlan.due_date).limit(5000)).all()
+    output = io.StringIO(); writer = csv.writer(output)
+    fields = ['sbn', 'description', 'plan_type', 'due_date', 'status', 'provider', 'responsible', 'cost', 'completed_at', 'notes']
+    writer.writerow(fields)
+    for row in rows:
+        asset = db.session.get(Asset, row.asset_id)
+        writer.writerow([asset.sbn if asset else '', asset.description if asset else '', row.plan_type, row.due_date.isoformat(), row.status,
+                         row.provider or '', row.responsible or '', row.cost if row.cost is not None else '',
+                         row.completed_at.isoformat() if row.completed_at else '', row.notes or ''])
+    return Response('\ufeff' + output.getvalue(), mimetype='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename=mantenimiento.csv'})
+
+
 @assets_bp.post('/maintenance')
 @roles_required('ADMIN')
 def create_maintenance():
