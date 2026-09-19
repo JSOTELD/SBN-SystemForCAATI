@@ -65,7 +65,7 @@ def update_user(user_id):
 @admin_bp.get("/audit-logs")
 @roles_required("ADMIN")
 def logs():
-    research_entities = ['OBSERVATION', 'REPORT_TRIAL', 'RESEARCH_SAMPLE', 'RESEARCH_PHASE', 'PATRIMONIAL', 'CENSUS', 'RESEARCH_ACCOUNT', 'SIMULATION_STUDY']
+    research_entities = ['OBSERVATION', 'REPORT_TRIAL', 'RESEARCH_SAMPLE', 'RESEARCH_PHASE', 'PATRIMONIAL', 'CENSUS', 'RESEARCH_ACCOUNT', 'GUIDE_STUDY']
     rows=db.session.scalars(db.select(AuditLog).where(~AuditLog.entity_type.in_(research_entities),
          (AuditLog.user_id.is_(None) | ~AuditLog.user_id.in_(db.select(User.id).where(User.role == 'RESEARCHER'))))
          .order_by(AuditLog.created_at.desc()).limit(500)).all()

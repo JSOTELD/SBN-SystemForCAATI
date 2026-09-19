@@ -82,7 +82,7 @@ def assets(study_id):
 @roles_required('RESEARCHER')
 def verify(study_id):
     report=verification(study_or_404(study_id))
-    audit(current_user().id,'VERIFY_GUIDES','SIMULATION_STUDY',study_id,{'passed':report['passed'],'passedChecks':report['passedChecks'],'totalChecks':report['totalChecks']})
+    audit(current_user().id,'VERIFY_GUIDES','GUIDE_STUDY',study_id,{'passed':report['passed'],'passedChecks':report['passedChecks'],'totalChecks':report['totalChecks']})
     db.session.commit(); return report
 
 
@@ -90,7 +90,7 @@ def verify(study_id):
 @roles_required('RESEARCHER')
 def events(study_id):
     study_or_404(study_id)
-    rows=db.session.scalars(db.select(AuditLog).where(AuditLog.entity_type=='SIMULATION_STUDY',AuditLog.entity_id==study_id).order_by(AuditLog.created_at.desc())).all()
+    rows=db.session.scalars(db.select(AuditLog).where(AuditLog.entity_type=='GUIDE_STUDY',AuditLog.entity_id==study_id).order_by(AuditLog.created_at.desc())).all()
     return [{'at':r.created_at.isoformat(),'action':r.action,'userId':r.user_id,'details':r.details} for r in rows]
 
 
@@ -157,5 +157,5 @@ def export_audit(study_id):
     output=io.BytesIO()
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
         for name,blob in files.items(): archive.writestr(name,blob)
-    audit(current_user().id,'EXPORT_GUIDES','SIMULATION_STUDY',study_id,{'files':list(files),'passed':report['passed']});db.session.commit()
+    audit(current_user().id,'EXPORT_GUIDES','GUIDE_STUDY',study_id,{'files':list(files),'passed':report['passed']});db.session.commit()
     return Response(output.getvalue(),mimetype='application/zip',headers={'Content-Disposition':'attachment; filename=expediente_guias_N1693.zip'})

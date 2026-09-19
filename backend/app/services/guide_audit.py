@@ -208,7 +208,7 @@ def import_guides(path, user_id):
                                 source_cells=archive,guides=guides,manifest=manifest,created_by=user_id)
         db.session.add(study); db.session.flush()
         for values in generated: db.session.add(GuideAsset(study_id=study_id,**values))
-        db.session.add(AuditLog(user_id=user_id,action='IMPORT_GUIDES',entity_type='SIMULATION_STUDY',entity_id=study_id,
+        db.session.add(AuditLog(user_id=user_id,action='IMPORT_GUIDES',entity_type='GUIDE_STUDY',entity_id=study_id,
                        details={'sourceHash':source_hash,'population':len(census),'checks':len(checks),'pretestDeclaration':'Declarado por el usuario; revisar la fuente'}))
         db.session.commit(); return study, True
     except Exception:

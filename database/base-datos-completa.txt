@@ -1,0 +1,43 @@
+DOCUMENTO DE REVISION DE BASE DE DATOS - ITAM SBN
+=================================================
+
+Este archivo contiene el SQL de inicializacion disponible en el repositorio.
+La estructura completa de las tablas se define en backend/app/models.py mediante
+SQLAlchemy; el archivo database/crear_base_itam_sbn.sql crea la base y documenta
+el procedimiento de inicializacion.
+
+No incluye credenciales, archivos .env, respaldos privados ni datos productivos.
+Para reconstruir la base de datos en un entorno de revision:
+
+1. Crear la base itam_sbn en MySQL o MariaDB.
+2. Configurar backend/.env a partir de deployment/.env.example.
+3. Ejecutar:
+   backend\.venv\Scripts\flask.exe --app backend/run.py init-db
+4. Crear datos de demostracion solo si son necesarios:
+   backend\.venv\Scripts\flask.exe --app backend/run.py seed-demo
+
+SQL DE INICIALIZACION
+---------------------
+
+-- Sistema de Gestion de Activos TI
+-- Ejecutar desde phpMyAdmin o desde la consola de MariaDB/MySQL.
+
+CREATE DATABASE IF NOT EXISTS itam_sbn
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE itam_sbn;
+
+-- La estructura de tablas es administrada por SQLAlchemy para mantenerla
+-- sincronizada con backend/app/models.py.
+
+SELECT 'Base itam_sbn creada correctamente' AS resultado;
+
+FUENTE DE LA ESTRUCTURA ORM
+---------------------------
+
+backend/app/models.py
+
+La aplicacion usa MySQL/MariaDB en produccion y SQLite en las pruebas aisladas.
+La configuracion de conexion se encuentra en backend/app/config.py y las
+credenciales deben permanecer fuera del control de versiones.
