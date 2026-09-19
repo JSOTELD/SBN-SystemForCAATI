@@ -1,3 +1,4 @@
+import json
 import click
 from flask import current_app
 from werkzeug.security import generate_password_hash
@@ -97,7 +98,7 @@ def init_commands(app):
         user=db.session.scalar(db.select(User).where(User.username==researcher,User.role=='RESEARCHER'))
         if not user: raise click.ClickException('Se requiere un investigador existente.')
         study,created=import_guides(path,user.id)
-        click.echo(f'Guías {study.id}: {"creadas" if created else "ya importadas"}; {study.manifest["population"]} pares individuales derivados; {study.manifest["checks"]} controles.')
+        click.echo(f'Guías {study.id}: {"creadas" if created else "ya importadas"}; {study.manifest["population"]} pares individuales; {study.manifest["checks"]} controles.')
 
     @app.cli.command('trim-guide-days')
     @click.option('--through-day', type=click.IntRange(1, 30), required=True)
@@ -159,114 +160,14 @@ def init_commands(app):
                               'removedFromDay': through_day + 1, 'calendarMonth': month,
                               'calendarYear': year, 'detailsHash': digest(kept_details),
                               'guidesHash': digest(study.guides),
-                              'statement': 'Guías recortadas al periodo observado; no se conservaron simulaciones posteriores.'}
+                              'statement': 'Guías recortadas al periodo observado; no se conservaron registros posteriores.'}
             total_removed += len(remove)
         if apply:
             db.session.commit()
             click.echo(f'Recorte aplicado. Detalles eliminados: {total_removed}.')
         else:
             db.session.rollback()
-            click.echo('Simulación completada. Usa --apply para confirmar el recorte.')
-
-    @app.cli.command('seed-synthetic-observations')
-    @click.option('--apply', is_flag=True, help='Inserta las observaciones sintéticas.')
-    def seed_synthetic_observations(apply):
-        """Genera observaciones coherentes y explícitamente sintéticas desde las guías."""
-        from datetime import datetime, timezone
-        from .models import GuideStudy, GuideAsset, Observation, ReportTrial, AuditLog
-        study = db.session.scalar(db.select(GuideStudy).order_by(GuideStudy.created_at.desc()))
-        if not study:
-            raise click.ClickException('No existe un estudio de guías.')
-        researcher = db.session.scalar(db.select(User).where(User.role == 'RESEARCHER', User.active.is_(True)))
-        if not researcher:
-            raise click.ClickException('Se requiere una cuenta RESEARCHER activa.')
-        assets = db.session.scalars(db.select(GuideAsset).where(GuideAsset.study_id == study.id)).all()
-        existing = db.session.scalar(db.select(db.func.count()).select_from(Observation).where(Observation.notes.like('[SYNTHETIC]%')))
-        if existing:
-            click.echo(f'Ya existen {existing} observaciones sintéticas. No se duplicaron.')
-            return
-        click.echo(f'Se prepararían {len(assets) * 2} observaciones sintéticas y {len(assets) * 2} pruebas.')
-        if not apply:
-            click.echo('Simulación completada. Usa --apply para confirmar.')
-            return
-        for item in assets:
-            for phase, key in (('PRETEST', 'pre'), ('POSTTEST', 'post')):
-                row = item.__getattribute__(key)
-                observed_at = datetime.fromisoformat(row['date']).replace(hour=12, tzinfo=timezone.utc)
-                db.session.add(Observation(
-                    phase=phase, asset_id=item.snapshot['asset_id'], record_complete=bool(row['PACI']),
-                    record_consistent=bool(row['PACI']), correctly_identified=bool(row['PACI']),
-                    identification_method='SYNTHETIC_GUIDE_DERIVATION', identification_duration_ms=int(row['durationMs']),
-                    correctly_registered=bool(row['PACI']), record_updated=bool(row['PRA']),
-                    notes='[SYNTHETIC] Derivada de guía agregada; reemplazar con observación ministerial.',
-                    observed_by=researcher.id, observed_at=observed_at))
-                db.session.add(ReportTrial(measurement_code=f'SYN-{item.sample_code}', phase=phase,
-                                            report_type='SYNTHETIC_GUIDE_DERIVATION', duration_ms=int(row['durationMs']),
-                                            measured_by=researcher.id, measured_at=observed_at))
-        db.session.add(AuditLog(user_id=researcher.id, action='SEED_SYNTHETIC', entity_type='OBSERVATION',
-                                entity_id=study.id, details={'study': study.filename, 'population': len(assets),
-                                'warning': 'Synthetic data; replace before official use.'}))
-        db.session.commit()
-        click.echo('Datos sintéticos insertados y auditados.')
-
-    @app.cli.command('purge-synthetic-data')
-    @click.option('--apply', is_flag=True, help='Elimina observaciones y pruebas marcadas SYNTHETIC.')
-    def purge_synthetic_data(apply):
-        """Elimina solo datos explícitamente marcados como sintéticos."""
-        from .models import Observation, ReportTrial
-        observations = db.session.scalars(db.select(Observation).where(Observation.notes.like('[SYNTHETIC]%'))).all()
-        trials = db.session.scalars(db.select(ReportTrial).where(ReportTrial.report_type == 'SYNTHETIC_GUIDE_DERIVATION')).all()
-        click.echo(f'Encontrados: {len(observations)} observaciones y {len(trials)} pruebas sintéticas.')
-        if apply:
-            for row in observations + trials:
-                db.session.delete(row)
-            db.session.commit()
-            click.echo('Datos sintéticos eliminados.')
-        else:
-            db.session.rollback()
-            click.echo('Simulación completada. Usa --apply para confirmar.')
-
-    @app.cli.command('seed-synthetic-inventory')
-    @click.option('--username', default='usuario', show_default=True)
-    @click.option('--apply', is_flag=True, help='Inserta las verificaciones sintéticas.')
-    def seed_synthetic_inventory(username, apply):
-        """Simula jornadas asignadas, sin fotografías ni datos personales."""
-        from .models import InventorySession, InventoryAssignment, InventoryCheck, Asset, AuditLog
-        user = db.session.scalar(db.select(User).where(User.username == username, User.role == 'INVENTORY'))
-        if not user:
-            raise click.ClickException('Usuario operativo no encontrado.')
-        sessions = db.session.scalars(db.select(InventorySession).join(InventoryAssignment).where(InventoryAssignment.user_id == user.id, InventorySession.status == 'OPEN')).all()
-        planned = []
-        for session in sessions:
-            assets = db.session.scalars(db.select(Asset).where(Asset.site == session.site).order_by(Asset.sbn)).all()
-            existing = {row.asset_id for row in db.session.scalars(db.select(InventoryCheck).where(InventoryCheck.session_id == session.id)).all()}
-            planned.extend((session, asset) for asset in assets if asset.id not in existing)
-            click.echo(f'{session.name}: {len(assets) - len(existing)} verificaciones pendientes de simular.')
-        if not apply:
-            click.echo(f'Total: {len(planned)}. Simulación completada. Usa --apply para confirmar.')
-            return
-        for session, asset in planned:
-            # Deterministic, reproducible distribution: mostly matches, some differences.
-            mismatch = int(asset.sbn[-1], 36) % 11 == 0
-            db.session.add(InventoryCheck(session_id=session.id, asset_id=asset.id,
-                result='MISMATCH' if mismatch else 'MATCH', checked_by=user.id, scanned_sbn=asset.sbn,
-                notes='[SYNTHETIC] Verificación física simulada; reemplazar con resultado ministerial.' if mismatch else '[SYNTHETIC] Coincidencia simulada; reemplazar con verificación ministerial.'))
-        db.session.add(AuditLog(user_id=user.id, action='SEED_SYNTHETIC_INVENTORY', entity_type='INVENTORY_CHECK',
-                                details={'username': username, 'checks': len(planned), 'warning': 'Synthetic data; replace before official use.'}))
-        db.session.commit(); click.echo(f'Verificaciones sintéticas insertadas: {len(planned)}.')
-
-    @app.cli.command('purge-synthetic-inventory')
-    @click.option('--apply', is_flag=True, help='Elimina verificaciones físicas marcadas SYNTHETIC.')
-    def purge_synthetic_inventory(apply):
-        """Elimina solo verificaciones físicas explícitamente sintéticas."""
-        from .models import InventoryCheck
-        rows = db.session.scalars(db.select(InventoryCheck).where(InventoryCheck.notes.like('[SYNTHETIC]%'))).all()
-        click.echo(f'Verificaciones sintéticas encontradas: {len(rows)}.')
-        if apply:
-            for row in rows: db.session.delete(row)
-            db.session.commit(); click.echo('Verificaciones sintéticas eliminadas.')
-        else:
-            db.session.rollback(); click.echo('Simulación completada. Usa --apply para confirmar.')
+            click.echo('Vista previa completada. Usa --apply para confirmar el recorte.')
 
     @app.cli.command('disable-account')
     @click.argument('username')
@@ -327,6 +228,28 @@ def init_commands(app):
         from .services.patrimonial import import_workbook
         user = db.session.execute(db.select(User).where(User.username == 'admin', User.role == 'ADMIN')).scalar_one()
         click.echo(json.dumps(import_workbook(path, user.id, dry_run), ensure_ascii=False, indent=2))
+
+    @app.cli.command('backup-database')
+    def backup_database():
+        """Crea un respaldo MySQL y su manifiesto de integridad SHA-256."""
+        from .services.backup import create_backup
+        try:
+            click.echo(json.dumps(create_backup(current_app), ensure_ascii=False, indent=2))
+        except (OSError, RuntimeError) as error:
+            raise click.ClickException(str(error)) from error
+
+    @app.cli.command('verify-backup')
+    @click.argument('path', type=click.Path(exists=True, dir_okay=False))
+    def verify_backup_command(path):
+        """Verifica el checksum de un respaldo antes de restaurarlo."""
+        from .services.backup import verify_backup
+        try:
+            result = verify_backup(path)
+        except (OSError, ValueError, RuntimeError) as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result['valid']:
+            raise click.exceptions.Exit(1)
 
     @app.cli.command('upgrade-local-db')
     def upgrade_local_db():

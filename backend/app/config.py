@@ -34,6 +34,7 @@ class BaseConfig:
     JWT_COOKIE_SECURE = False
     MAX_CONTENT_LENGTH = 6 * 1024 * 1024
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', str(Path(__file__).resolve().parents[1] / 'private_uploads'))
+    BACKUP_FOLDER = os.getenv('BACKUP_FOLDER', str(Path(__file__).resolve().parents[1] / 'private_backups'))
     CORS_ORIGINS = [value.strip() for value in os.getenv("CORS_ORIGIN", "http://localhost:5173").split(",") if value.strip()]
 
 

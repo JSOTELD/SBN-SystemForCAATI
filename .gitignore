@@ -3,6 +3,7 @@
 backend/.venv/
 backend/.venv-local/
 backend/private_uploads/
+backend/private_backups/
 deployment/.env
 deployment/backups/
 tests/tooling/
