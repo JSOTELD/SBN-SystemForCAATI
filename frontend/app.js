@@ -134,10 +134,14 @@ async function dashboard(view) {
 }
 
 async function assets(view) {
-  view.innerHTML = `<div class="toolbar"><div><h2>Activos físicos</h2><span id="count" class="muted"></span></div><button class="primary" id="new">Registrar activo</button></div>
+  view.innerHTML = `<div class="toolbar"><div><h2>Activos físicos</h2><span id="count" class="muted"></span></div><div class="page-actions"><button class="secondary" id="export-assets">Exportar CSV</button><button class="primary" id="new">Registrar activo</button></div></div>
     <div class="filters"><input id="search" placeholder="SBN, serie, descripción o responsable"><select id="type"><option value="">Todos los activos</option><option value="TYPE_1">Tipo 1 - All in One</option><option value="TYPE_2">Tipo 2 - CPU</option><option value="TYPE_3">Tipo 3 - Workstation</option><option value="ALL_IN_ONE">All in One integrado</option><option value="MONITOR">Monitor / pantalla</option><option value="KEYBOARD">Teclado</option><option value="CPU">CPU</option><option value="LAPTOP">Laptop</option><option value="PRINTER">Impresora</option></select><select id="status"><option value="">Todos los estados</option><option>OPERATIVO</option><option>MANTENIMIENTO</option><option>BAJA</option><option>NO_OPERATIVO</option><option>INOPERATIVO</option><option>SIN_DATO</option></select></div><div id="asset-table"></div><div class="toolbar"><button id="previous">Anterior</button><span id="page-label"></span><button id="next">Siguiente</button></div>`;
   view.querySelector('#new').hidden = state.user.role !== 'ADMIN';
   view.querySelector('#new').onclick = () => navigate('register');
+  view.querySelector('#export-assets').onclick = () => {
+    const query = new URLSearchParams({search: view.querySelector('#search').value, type: view.querySelector('#type').value, status: view.querySelector('#status').value});
+    window.location.href = API + '/assets.csv?' + query;
+  };
   let timer; let page = 1; let lastPage = 1; let loadVersion = 0;
   const load = async () => {
     const version = ++loadVersion;

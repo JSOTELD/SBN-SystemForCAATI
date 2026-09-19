@@ -131,6 +131,25 @@ def list_assets():
     return {"items": [row.api_dict() for row in rows], "total": total, "page": page, "pageSize": size}
 
 
+@assets_bp.get('/assets.csv')
+@auth_required
+def assets_csv():
+    from ..security import scoped_assets
+    search = request.args.get('search', '').strip(); asset_type = request.args.get('type', '').strip(); status = request.args.get('status', '').strip()
+    query = scoped_assets(db.select(Asset))
+    if search:
+        term = f"%{search}%"; query = query.where(or_(Asset.sbn.like(term), Asset.serial_number.like(term), Asset.description.like(term), Asset.responsible_person.like(term)))
+    if asset_type: query = query.where(Asset.asset_type == asset_type)
+    if status: query = query.where(Asset.status == status)
+    rows = db.session.scalars(query.order_by(Asset.sbn).limit(10000)).all()
+    output = io.StringIO(); writer = csv.writer(output)
+    fields = ['sbn', 'asset_type', 'description', 'brand', 'model', 'serial_number', 'site', 'building', 'floor', 'room', 'status', 'condition', 'responsible_person', 'last_verified_at']
+    writer.writerow(fields)
+    for row in rows:
+        writer.writerow([getattr(row, field).isoformat() if field == 'last_verified_at' and getattr(row, field) else getattr(row, field) for field in fields])
+    return Response('\ufeff' + output.getvalue(), mimetype='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename=inventario_activos.csv'})
+
+
 @assets_bp.get("/assets/sbn/<value>")
 @auth_required
 def by_sbn(value):
