@@ -346,7 +346,10 @@ def movements():
 @assets_bp.get("/movements.csv")
 @roles_required("ADMIN")
 def movements_csv():
-    rows = db.session.scalars(db.select(Movement).order_by(Movement.created_at.desc()).limit(5000)).all()
+    query = db.select(Movement).order_by(Movement.created_at.desc())
+    status = request.args.get('status', '').strip().upper()
+    if status in {'REQUESTED', 'APPROVED', 'DELIVERED', 'REJECTED'}: query = query.where(Movement.status == status)
+    rows = db.session.scalars(query.limit(5000)).all()
     output = io.StringIO(); writer = csv.writer(output)
     writer.writerow(['id', 'asset_id', 'movement_type', 'status', 'previous_site', 'new_site',
                      'previous_responsible', 'new_responsible', 'reason', 'support_document',
