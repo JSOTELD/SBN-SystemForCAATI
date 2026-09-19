@@ -8,6 +8,7 @@ deployment/backups/
 tests/tooling/
 tests/frontend/node_modules/
 database/backup_*.sql
+!database/base-filtrada-mysql.sql
 **/__pycache__/
 *.py[cod]
 .pytest_cache/

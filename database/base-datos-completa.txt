@@ -41,3 +41,8 @@ backend/app/models.py
 La aplicacion usa MySQL/MariaDB en produccion y SQLite en las pruebas aisladas.
 La configuracion de conexion se encuentra en backend/app/config.py y las
 credenciales deben permanecer fuera del control de versiones.
+
+Para la carga filtrada solicitada desde `BASE PATRIMONIAL AL 08-05-2026.xlsx`,
+usa `database/base-filtrada-mysql.sql`. Ese dump contiene únicamente registros
+con SBN válido y único de monitores, teclados, impresoras, laptops, equipos all in
+one, CPU y estaciones de trabajo.
