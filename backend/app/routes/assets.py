@@ -348,7 +348,9 @@ def movements():
 def movements_csv():
     query = db.select(Movement).order_by(Movement.created_at.desc())
     status = request.args.get('status', '').strip().upper()
-    if status in {'REQUESTED', 'APPROVED', 'DELIVERED', 'REJECTED'}: query = query.where(Movement.status == status)
+    if status:
+        if status not in {'REQUESTED', 'APPROVED', 'DELIVERED', 'REJECTED'}: return jsonify(message='Estado de movimiento no permitido.'), 400
+        query = query.where(Movement.status == status)
     rows = db.session.scalars(query.limit(5000)).all()
     output = io.StringIO(); writer = csv.writer(output)
     writer.writerow(['id', 'asset_id', 'movement_type', 'status', 'previous_site', 'new_site',
