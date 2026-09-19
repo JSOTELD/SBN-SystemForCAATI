@@ -134,7 +134,11 @@ def update_user(user_id):
 @roles_required("ADMIN")
 def logs():
     research_entities = ['OBSERVATION', 'REPORT_TRIAL', 'RESEARCH_SAMPLE', 'RESEARCH_PHASE', 'PATRIMONIAL', 'CENSUS', 'RESEARCH_ACCOUNT', 'GUIDE_STUDY']
-    rows=db.session.scalars(db.select(AuditLog).where(~AuditLog.entity_type.in_(research_entities),
+    action=request.args.get('action', '').strip().upper(); entity=request.args.get('entityType', '').strip().upper()
+    limit=min(500, max(1, request.args.get('limit', 100, type=int)))
+    query=db.select(AuditLog).where(~AuditLog.entity_type.in_(research_entities),
          (AuditLog.user_id.is_(None) | ~AuditLog.user_id.in_(db.select(User.id).where(User.role == 'RESEARCHER'))))
-         .order_by(AuditLog.created_at.desc()).limit(500)).all()
+    if action: query=query.where(AuditLog.action == action)
+    if entity: query=query.where(AuditLog.entity_type == entity)
+    rows=db.session.scalars(query.order_by(AuditLog.created_at.desc()).limit(limit)).all()
     return [{"id":r.id,"user_id":r.user_id,"action":r.action,"entity_type":r.entity_type,"entity_id":r.entity_id,"details":r.details,"ip_address":r.ip_address,"created_at":r.created_at.isoformat()} for r in rows]
