@@ -53,7 +53,7 @@ async function logout() {
 
 function renderLogin() {
   app.innerHTML = `<main class="login"><section class="login-card">
-    <div class="brand"><div class="brand-mark">▣</div><h1>Sistema de Gestión de Activos TI</h1><p class="muted">Identificación patrimonial SBN</p></div>
+    <div class="brand"><div class="brand-mark">▣</div><h1>Gestor de Activos TI Físicos</h1><p class="muted">Operación, ciclo de vida y trazabilidad de activos</p></div>
     <div id="login-message"></div>
     <form id="login-form">
       <label class="field">Usuario o correo<input name="username" value="admin" required autocomplete="username"></label>
@@ -77,8 +77,8 @@ function renderLogin() {
 }
 
 const menu = [
-  ['dashboard', '▦  Panel de control'], ['assets', '▣  Activos'], ['register', '＋  Registrar activo'],
-  ['scanner', 'Consultar código'], ['groups', '⌘  Agrupaciones'], ['inventory', 'Inventario'], ['research', 'Censo Libros y Comercio'], ['indicators', 'Indicadores'], ['users', 'Usuarios'], ['catalogs', 'Catálogos'], ['audit', 'Auditoría'], ['settings', '⚙  Configuración']
+  ['dashboard', '▦  Panel de control'], ['assets', '▣  Activos TI'], ['register', '＋  Registrar activo'],
+  ['scanner', 'Consultar etiqueta'], ['groups', '⌘  Agrupaciones'], ['inventory', 'Verificación física'], ['research', 'Cobertura operativa'], ['indicators', 'Indicadores'], ['users', 'Usuarios'], ['catalogs', 'Catálogos'], ['audit', 'Auditoría'], ['settings', '⚙  Configuración']
 ];
 
 function renderShell() {
@@ -110,7 +110,7 @@ async function navigate(screen) {
 async function dashboard(view) {
   const data = await request('/dashboard');
   const cards = [['Total', data.totals.total], ['Operativos', data.totals.operational], ['Completos', data.totals.complete_consistent], ['SBN verificados', data.totals.barcode_verified]];
-  view.innerHTML = `<div class="page-heading"><div><span class="eyebrow">GESTIÓN PATRIMONIAL</span><h2>Resumen operativo</h2><p>Control centralizado de activos y componentes tecnológicos.</p></div></div><div class="cards">${cards.map(([label, value], index) => `<div class="card stat-${index + 1}"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
+  view.innerHTML = `<div class="page-heading"><div><span class="eyebrow">GESTIÓN DE ACTIVOS TI</span><h2>Resumen operativo</h2><p>Control del ciclo de vida, estado y ubicación de activos tecnológicos físicos.</p></div></div><div class="cards">${cards.map(([label, value], index) => `<div class="card stat-${index + 1}"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
     <div class="group-alert-summary"><div><strong>${data.grouping?.ungroupedComponents || 0}</strong><span>componentes sin agrupación</span></div><div><strong>${data.grouping?.incompleteGroups || 0}</strong><span>grupos incompletos</span></div><button class="primary" id="review-groups">Revisar agrupaciones</button></div>
     <div class="grid2"><section class="panel"><h3>Por tipo</h3>${data.byType.map(row => `<div class="row"><span>${escapeHtml(row.type)}</span><strong>${row.total}</strong></div>`).join('')}</section>
     <section class="panel"><h3>Por sede</h3>${data.bySite.map(row => `<div class="row"><span>${escapeHtml(row.site)}</span><strong>${row.total}</strong></div>`).join('')}</section></div>

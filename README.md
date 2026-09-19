@@ -1,4 +1,12 @@
-# Gestión de activos TI e investigación censal
+# Gestor de activos TI físicos
+
+Plataforma para registrar, operar y controlar el ciclo de vida de activos tecnológicos
+físicos: identificación, ubicación, responsable, estado, agrupación, inventario,
+movimientos, evidencias y trazabilidad operativa.
+
+El diseño toma como referencia prácticas de gestión de servicios de ITIL y los controles
+de gestión de servicios de ISO/IEC 20000. Esta referencia orienta los procesos del sistema;
+no constituye una certificación ni una declaración de conformidad normativa.
 
 Sistema local actualizado el 13/09/2026. Acceso: **http://localhost:3001**.
 Para iniciar nuevamente, active MySQL/MariaDB de XAMPP y ejecute `INICIAR_SISTEMA.cmd`.
@@ -8,19 +16,17 @@ El servidor escucha en 127.0.0.1; ese enlace corresponde a esta computadora.
 
 | Perfil | Usuario local | Alcance |
 | --- | --- | --- |
-| Administrador | admin | Inventario general, fichas, agrupaciones, jornadas, cuentas operativas y auditoría operativa |
-| Usuario general | usuario | Consulta de activos de sus sedes asignadas, hallazgos y fotografías en sus jornadas |
-| Investigador | investigador | Censo, guías pretest/postest, indicadores, cierre de fases, exportaciones y auditoría del estudio |
+| Administrador | admin | Catálogo, ciclo de vida, agrupaciones, jornadas, cuentas operativas y auditoría |
+| Usuario operativo | usuario | Verificación física, evidencias y actualización de activos en sedes asignadas |
+| Analista | investigador | Mediciones, indicadores, cobertura operativa y auditoría de guías |
 
 Las contraseñas se entregan en la conversación; se almacenan mediante hashes scrypt.
 Estas cuentas genéricas son únicamente para la preparación inicial. Las cuentas personales
 creadas desde Usuarios deben cambiar su contraseña temporal al ingresar.
 
-El administrador no accede a investigación, sus exportaciones ni sus registros de auditoría.
-Tampoco puede crear, convertir, desactivar o restablecer cuentas de investigador desde la API.
-El investigador no administra usuarios operativos y no modifica fichas patrimoniales.
-El usuario general levanta datos; las mediciones de tesis son exclusivas del investigador,
-según la aclaración del usuario del 13/09/2026.
+El administrador controla la operación de activos y no modifica las mediciones del analista.
+El analista no administra usuarios operativos ni modifica directamente las fichas de activos.
+El usuario operativo verifica activos, registra evidencias y reporta hallazgos en sus sedes.
 
 Las cuentas de investigación se crean mediante el procedimiento técnico independiente:
 
@@ -54,15 +60,15 @@ No se generaron mediciones pretest/postest ni hallazgos ficticios durante la act
 
 ## Flujo de trabajo
 
-1. El administrador crea una jornada, selecciona la sede y asigna usuarios generales.
-2. El usuario abre Mis jornadas, consulta el código con cámara, teclado o lector externo,
-   revisa la ficha y registra coincidencia, diferencia, no localizado o no aplica.
+1. El administrador crea una jornada, selecciona la sede y asigna usuarios operativos.
+2. El usuario abre Mis jornadas, consulta la etiqueta con cámara, teclado o lector externo,
+   revisa la ficha del activo y registra coincidencia, diferencia, no localizado o no aplica.
 3. Puede adjuntar hasta tres fotografías JPEG/PNG de 5 MB por hallazgo. Se reexportan
    sin EXIF/GPS y se almacenan fuera de los archivos públicos. Solo usuarios autorizados
    pueden consultarlas. El investigador consulta los hallazgos textuales del censo.
 4. Las correcciones de hallazgos exigen motivo y versión actual. El administrador
    revisa los hallazgos y puede corregir la ficha con motivo e historial antes/después.
-   Los hallazgos no sobrescriben automáticamente el patrimonio ni las mediciones.
+   Los hallazgos no sobrescriben automáticamente la información operativa ni las mediciones.
 5. El administrador cierra jornadas. El investigador registra sus propias guías,
    consulta cobertura por sede/tipo/fase y exporta pares e instrumentos.
 

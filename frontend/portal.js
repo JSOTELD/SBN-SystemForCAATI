@@ -2,7 +2,7 @@
  * Cámara: https://github.com/zxing-js/browser (versión local 0.1.5, MIT).
  * La sesión usa cookie HttpOnly y protección CSRF; no se guarda el JWT en JS.
  */
-const roleNames = {ADMIN: 'Administrador', INVENTORY: 'Usuario general', RESEARCHER: 'Investigador', VIEWER: 'Consulta'};
+const roleNames = {ADMIN: 'Administrador', INVENTORY: 'Usuario operativo', RESEARCHER: 'Analista', VIEWER: 'Consulta'};
 function homeScreen() { return state.user?.role === 'RESEARCHER' ? 'research' : state.user?.role === 'INVENTORY' ? 'inventory' : state.user?.role === 'VIEWER' ? 'assets' : 'dashboard'; }
 function visibleMenu() {
   const permissions = {
@@ -23,7 +23,7 @@ function stopCamera() {
 window.addEventListener('pagehide', stopCamera);
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopCamera(); });
 function cameraPanel() {
-  return '<div class="camera-panel"><button type="button" class="secondary" data-camera>Leer con cámara</button><button type="button" data-stop-camera hidden>Detener cámara</button><video playsinline muted hidden></video><p class="muted" data-camera-status>También puede escribir el código o usar un lector externo.</p></div>';
+  return '<div class="camera-panel"><button type="button" class="secondary" data-camera>Leer etiqueta del activo</button><button type="button" data-stop-camera hidden>Detener cámara</button><video playsinline muted hidden></video><p class="muted" data-camera-status>También puede escribir el código o usar un lector externo.</p></div>';
 }
 function bindCamera(container, input, onRead = () => {}) {
   const start = container.querySelector('[data-camera]'); const stop = container.querySelector('[data-stop-camera]');
@@ -63,7 +63,7 @@ async function mobileInventory(view) {
 }
 async function newSession(view) {
   const [sites, users] = await Promise.all([request('/inventory-sites'), request('/users')]);
-  view.innerHTML = `<h2>Nueva jornada</h2><form class="panel" id="session-form"><label class="field">Nombre<input name="name" minlength="3" maxlength="150" required></label><label class="field">Edificio o sede<select name="site">${sites.map(site => `<option>${escapeHtml(site)}</option>`).join('')}</select></label><fieldset><legend>Usuarios generales asignados</legend>${users.filter(u => u.active && u.role === 'INVENTORY').map(user => `<label class="check-option"><input type="checkbox" name="assigned" value="${user.id}">${escapeHtml(user.fullName)} (${escapeHtml(user.username)})</label>`).join('') || '<p>Primero cree un usuario general.</p>'}</fieldset><button class="primary">Crear y abrir</button><button type="button" id="cancel">Volver</button><div id="message"></div></form>`;
+  view.innerHTML = `<h2>Nueva jornada</h2><form class="panel" id="session-form"><label class="field">Nombre<input name="name" minlength="3" maxlength="150" required></label><label class="field">Edificio o sede<select name="site">${sites.map(site => `<option>${escapeHtml(site)}</option>`).join('')}</select></label><fieldset><legend>Usuarios operativos asignados</legend>${users.filter(u => u.active && u.role === 'INVENTORY').map(user => `<label class="check-option"><input type="checkbox" name="assigned" value="${user.id}">${escapeHtml(user.fullName)} (${escapeHtml(user.username)})</label>`).join('') || '<p>Primero cree un usuario operativo.</p>'}</fieldset><button class="primary">Crear y abrir</button><button type="button" id="cancel">Volver</button><div id="message"></div></form>`;
   view.querySelector('#cancel').onclick = () => navigate('inventory');
   view.querySelector('form').onsubmit = async event => {
     event.preventDefault(); const f = new FormData(event.target);
