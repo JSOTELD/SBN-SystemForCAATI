@@ -30,6 +30,27 @@ def patrimonial_import_preview():
     finally:
         if 'path' in locals(): Path(path).unlink(missing_ok=True)
 
+@admin_bp.post('/patrimonial/import')
+@roles_required('ADMIN')
+def patrimonial_import():
+    upload = request.files.get('file')
+    if not upload or not upload.filename.lower().endswith(('.xlsx', '.xlsm')):
+        return jsonify(message='Adjunte un libro Excel .xlsx o .xlsm.'), 400
+    from ..services.patrimonial import import_workbook
+    suffix = Path(upload.filename).suffix.lower()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp:
+            upload.save(temp.name); path = temp.name
+        result = import_workbook(path, current_user().id, dry_run=False)
+        audit(current_user().id, 'IMPORT', 'PATRIMONIAL', result.get('import_hash'), {'filename': upload.filename, 'summary': result})
+        db.session.commit()
+        return result, 201
+    except (OSError, ValueError) as error:
+        db.session.rollback()
+        return jsonify(message=str(error)), 422
+    finally:
+        if 'path' in locals(): Path(path).unlink(missing_ok=True)
+
 @admin_bp.get('/backups')
 @roles_required('ADMIN')
 def backups():
