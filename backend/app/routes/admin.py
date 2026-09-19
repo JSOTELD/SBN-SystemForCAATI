@@ -1,7 +1,9 @@
 import json
+import csv
+import io
 import tempfile
 from pathlib import Path
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.security import generate_password_hash
 
 from ..extensions import db
@@ -142,3 +144,14 @@ def logs():
     if entity: query=query.where(AuditLog.entity_type == entity)
     rows=db.session.scalars(query.order_by(AuditLog.created_at.desc()).limit(limit)).all()
     return [{"id":r.id,"user_id":r.user_id,"action":r.action,"entity_type":r.entity_type,"entity_id":r.entity_id,"details":r.details,"ip_address":r.ip_address,"created_at":r.created_at.isoformat()} for r in rows]
+
+@admin_bp.get('/audit-logs.csv')
+@roles_required('ADMIN')
+def logs_csv():
+    action=request.args.get('action', '').strip().upper(); entity=request.args.get('entityType', '').strip().upper()
+    query=db.select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(5000, max(1, request.args.get('limit', 1000, type=int))))
+    if action: query=query.where(AuditLog.action == action)
+    if entity: query=query.where(AuditLog.entity_type == entity)
+    output=io.StringIO(); writer=csv.writer(output); writer.writerow(['id','action','entity_type','entity_id','user_id','ip_address','created_at','details'])
+    for row in db.session.scalars(query).all(): writer.writerow([row.id,row.action,row.entity_type,row.entity_id,row.user_id,row.ip_address,row.created_at.isoformat(),json.dumps(row.details, ensure_ascii=False)])
+    return Response('\ufeff'+output.getvalue(), mimetype='text/csv; charset=utf-8', headers={'Content-Disposition':'attachment; filename=auditoria.csv'})
