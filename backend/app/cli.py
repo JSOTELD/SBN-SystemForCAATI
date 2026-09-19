@@ -168,6 +168,64 @@ def init_commands(app):
             db.session.rollback()
             click.echo('Simulación completada. Usa --apply para confirmar el recorte.')
 
+    @app.cli.command('seed-synthetic-observations')
+    @click.option('--apply', is_flag=True, help='Inserta las observaciones sintéticas.')
+    def seed_synthetic_observations(apply):
+        """Genera observaciones coherentes y explícitamente sintéticas desde las guías."""
+        from datetime import datetime, timezone
+        from .models import GuideStudy, GuideAsset, Observation, ReportTrial, AuditLog
+        study = db.session.scalar(db.select(GuideStudy).order_by(GuideStudy.created_at.desc()))
+        if not study:
+            raise click.ClickException('No existe un estudio de guías.')
+        researcher = db.session.scalar(db.select(User).where(User.role == 'RESEARCHER', User.active.is_(True)))
+        if not researcher:
+            raise click.ClickException('Se requiere una cuenta RESEARCHER activa.')
+        assets = db.session.scalars(db.select(GuideAsset).where(GuideAsset.study_id == study.id)).all()
+        existing = db.session.scalar(db.select(db.func.count()).select_from(Observation).where(Observation.notes.like('[SYNTHETIC]%')))
+        if existing:
+            click.echo(f'Ya existen {existing} observaciones sintéticas. No se duplicaron.')
+            return
+        click.echo(f'Se prepararían {len(assets) * 2} observaciones sintéticas y {len(assets) * 2} pruebas.')
+        if not apply:
+            click.echo('Simulación completada. Usa --apply para confirmar.')
+            return
+        for item in assets:
+            for phase, key in (('PRETEST', 'pre'), ('POSTTEST', 'post')):
+                row = item.__getattribute__(key)
+                observed_at = datetime.fromisoformat(row['date']).replace(hour=12, tzinfo=timezone.utc)
+                db.session.add(Observation(
+                    phase=phase, asset_id=item.snapshot['asset_id'], record_complete=bool(row['PACI']),
+                    record_consistent=bool(row['PACI']), correctly_identified=bool(row['PACI']),
+                    identification_method='SYNTHETIC_GUIDE_DERIVATION', identification_duration_ms=int(row['durationMs']),
+                    correctly_registered=bool(row['PACI']), record_updated=bool(row['PRA']),
+                    notes='[SYNTHETIC] Derivada de guía agregada; reemplazar con observación ministerial.',
+                    observed_by=researcher.id, observed_at=observed_at))
+                db.session.add(ReportTrial(measurement_code=f'SYN-{item.sample_code}', phase=phase,
+                                            report_type='SYNTHETIC_GUIDE_DERIVATION', duration_ms=int(row['durationMs']),
+                                            measured_by=researcher.id, measured_at=observed_at))
+        db.session.add(AuditLog(user_id=researcher.id, action='SEED_SYNTHETIC', entity_type='OBSERVATION',
+                                entity_id=study.id, details={'study': study.filename, 'population': len(assets),
+                                'warning': 'Synthetic data; replace before official use.'}))
+        db.session.commit()
+        click.echo('Datos sintéticos insertados y auditados.')
+
+    @app.cli.command('purge-synthetic-data')
+    @click.option('--apply', is_flag=True, help='Elimina observaciones y pruebas marcadas SYNTHETIC.')
+    def purge_synthetic_data(apply):
+        """Elimina solo datos explícitamente marcados como sintéticos."""
+        from .models import Observation, ReportTrial
+        observations = db.session.scalars(db.select(Observation).where(Observation.notes.like('[SYNTHETIC]%'))).all()
+        trials = db.session.scalars(db.select(ReportTrial).where(ReportTrial.report_type == 'SYNTHETIC_GUIDE_DERIVATION')).all()
+        click.echo(f'Encontrados: {len(observations)} observaciones y {len(trials)} pruebas sintéticas.')
+        if apply:
+            for row in observations + trials:
+                db.session.delete(row)
+            db.session.commit()
+            click.echo('Datos sintéticos eliminados.')
+        else:
+            db.session.rollback()
+            click.echo('Simulación completada. Usa --apply para confirmar.')
+
     @app.cli.command('disable-account')
     @click.argument('username')
     def disable_account(username):
