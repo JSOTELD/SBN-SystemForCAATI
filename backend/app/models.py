@@ -160,6 +160,21 @@ class Movement(db.Model):
     asset = relationship("Asset", back_populates="movements")
 
 
+class MaintenancePlan(TimestampMixin, db.Model):
+    __tablename__ = "maintenance_plans"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    asset_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    plan_type: Mapped[str] = mapped_column(String(30), nullable=False, default="PREVENTIVE")
+    due_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PLANNED", index=True)
+    provider: Mapped[str | None] = mapped_column(String(150))
+    responsible: Mapped[str | None] = mapped_column(String(150))
+    cost: Mapped[float | None] = mapped_column()
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(String(1000))
+    __table_args__ = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"}
+
+
 class Observation(db.Model):
     __tablename__ = "observations"
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

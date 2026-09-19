@@ -6,7 +6,7 @@ from flask import Blueprint, Response, jsonify, request
 from sqlalchemy import func, or_
 
 from ..extensions import db
-from ..models import Asset, AssetGroup, AssetGroupMember, Movement, InventorySession
+from ..models import Asset, AssetGroup, AssetGroupMember, Movement, InventorySession, MaintenancePlan
 from ..security import auth_required, current_user, roles_required
 from ..services.audit import audit
 from ..validation import ValidationFailure, data, required, sbn
@@ -17,6 +17,64 @@ ASSET_TYPES = {"TYPE_1", "TYPE_2", "TYPE_3", "LAPTOP", "PRINTER", "ALL_IN_ONE", 
 # En el libro Situación describe conservación; Condición describe operatividad.
 STATUSES = {"OPERATIVO", "MANTENIMIENTO", "BAJA", "NO_OPERATIVO", "INOPERATIVO", "SIN_DATO"}
 CONDITIONS = {"BUENO", "REGULAR", "MALO", "NUEVO", "FALTANTE"}
+
+
+def maintenance_dict(row):
+    asset = db.session.get(Asset, row.asset_id)
+    return {"id": row.id, "assetId": row.asset_id, "sbn": asset.sbn if asset else None, "description": asset.description if asset else None,
+            "planType": row.plan_type, "dueDate": row.due_date.isoformat(), "status": row.status,
+            "provider": row.provider, "responsible": row.responsible, "cost": row.cost,
+            "completedAt": row.completed_at.isoformat() if row.completed_at else None, "notes": row.notes}
+
+
+@assets_bp.get('/maintenance')
+@auth_required
+def maintenance_list():
+    from datetime import datetime, timezone
+    query = db.select(MaintenancePlan).order_by(MaintenancePlan.due_date)
+    rows = db.session.scalars(query.limit(500)).all()
+    now = datetime.now(timezone.utc)
+    result = []
+    for row in rows:
+        item = maintenance_dict(row)
+        item['overdue'] = row.status == 'PLANNED' and row.due_date < now
+        result.append(item)
+    return result
+
+
+@assets_bp.post('/maintenance')
+@roles_required('ADMIN')
+def create_maintenance():
+    from datetime import datetime
+    payload = data(); asset = db.session.get(Asset, payload.get('assetId'))
+    if not asset: return jsonify(message='Activo no encontrado.'), 404
+    try: due_date = datetime.fromisoformat(required(payload.get('dueDate'), 'dueDate'))
+    except ValueError as error: raise ValidationFailure('dueDate debe ser una fecha ISO válida.') from error
+    status = payload.get('status', 'PLANNED')
+    if status not in {'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'}: raise ValidationFailure('Estado de mantenimiento no permitido.')
+    row = MaintenancePlan(asset_id=asset.id, plan_type=payload.get('planType', 'PREVENTIVE'), due_date=due_date,
+                          status=status, provider=payload.get('provider'), responsible=payload.get('responsible'),
+                          cost=payload.get('cost'), notes=payload.get('notes'))
+    db.session.add(row); db.session.flush(); audit(current_user().id, 'CREATE', 'MAINTENANCE_PLAN', row.id); db.session.commit()
+    return maintenance_dict(row), 201
+
+
+@assets_bp.patch('/maintenance/<plan_id>')
+@roles_required('ADMIN')
+def update_maintenance(plan_id):
+    from datetime import datetime, timezone
+    row = db.session.get(MaintenancePlan, plan_id)
+    if not row: return jsonify(message='Plan de mantenimiento no encontrado.'), 404
+    payload = data()
+    if 'status' in payload and payload['status'] not in {'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'}: raise ValidationFailure('Estado no permitido.')
+    for key, field in [('status', 'status'), ('provider', 'provider'), ('responsible', 'responsible'), ('notes', 'notes'), ('cost', 'cost')]:
+        if key in payload: setattr(row, field, payload[key])
+    if 'dueDate' in payload:
+        try: row.due_date = datetime.fromisoformat(payload['dueDate'])
+        except ValueError as error: raise ValidationFailure('dueDate debe ser una fecha ISO válida.') from error
+    if row.status == 'COMPLETED' and not row.completed_at: row.completed_at = datetime.now(timezone.utc)
+    audit(current_user().id, 'UPDATE', 'MAINTENANCE_PLAN', row.id, {'status': row.status}); db.session.commit()
+    return maintenance_dict(row)
 
 
 def apply_asset_payload(asset, payload):

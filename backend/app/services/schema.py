@@ -19,6 +19,15 @@ def upgrade_schema():
                       'approved_by': 'VARCHAR(36) NULL', 'approved_at': 'DATETIME NULL',
                       'delivered_at': 'DATETIME NULL', 'rejection_reason': 'VARCHAR(1000) NULL'},
     }
+    if 'maintenance_plans' not in inspect(db.engine).get_table_names():
+        db.session.execute(text("""CREATE TABLE maintenance_plans (
+            id VARCHAR(36) PRIMARY KEY, asset_id VARCHAR(36) NOT NULL, plan_type VARCHAR(30) NOT NULL DEFAULT 'PREVENTIVE',
+            due_date DATETIME NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'PLANNED', provider VARCHAR(150) NULL,
+            responsible VARCHAR(150) NULL, cost DECIMAL(12,2) NULL, completed_at DATETIME NULL, notes VARCHAR(1000) NULL,
+            created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
+            INDEX ix_maintenance_plans_asset_id (asset_id), INDEX ix_maintenance_plans_due_date (due_date),
+            INDEX ix_maintenance_plans_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"""))
     for table, fields in additions.items():
         existing = {c['name'] for c in inspector.get_columns(table)}
         for name, sql_type in fields.items():
