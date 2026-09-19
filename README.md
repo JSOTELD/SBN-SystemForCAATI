@@ -132,7 +132,7 @@ El arranque de producción rechaza las cuentas genéricas y la contraseña local
 Pruebas realizadas: permisos por rol y ámbito, sesiones/CSRF/revocación, conflictos de
 edición, fotografías privadas, congelamiento de marco, cierre de fases, compatibilidad
 de agrupaciones, integridad de los datos y restauración de SQL en una base temporal.
-Las pantallas y guías se probaron con DOM simulado contra la API local, sin modificar
+Las pantallas y guías se probaron con DOM automatizado contra la API local, sin modificar
 datos reales. No había navegador conectado; quedan pendientes pruebas visuales y de
 cámara en Android/iPhone. Docker no está instalado aquí: el despliegue preparado debe
 validarse en el servidor elegido antes de publicar.
@@ -160,6 +160,6 @@ El **pretest agregado es real según declaración del usuario**. La fuente ident
 
 El botón **Ejecutar conciliación** verifica 360 controles, códigos únicos y hashes SHA-256. El expediente ZIP contiene el archivo original sin cambios, guías CSV, detalle por equipo, conciliaciones, informe imprimible y manifiesto con hashes. Se registran importación, verificaciones y exportaciones en el historial. Los controles no certifican autenticidad de mediciones. Los perfiles administrador y usuario general no acceden al módulo.
 
-Importación reproducible e idempotente: `python -m flask --app backend/run.py import-guides "C:/ruta/guias_30_dias.xlsx" --researcher investigador`. Ejecutar antes `upgrade-production-db` con la misma aplicación. La semilla, versión del algoritmo, fecha de importación y procedencia se conservan en la base de datos. Respaldo previo: `database/backup_before_simulation_guides.sql`.
+Importación reproducible e idempotente: `python -m flask --app backend/run.py import-guides "C:/ruta/guias_30_dias.xlsx" --researcher investigador`. Ejecutar antes `upgrade-production-db` con la misma aplicación. La semilla, versión del algoritmo, fecha de importación y procedencia se conservan en la base de datos. Respaldo previo: `database/backup_before_guides.sql`.
 
 Prueba aislada: `backend/.venv-local/Scripts/python.exe -m unittest discover -s backend -p test_guide_audit.py -v`. Requiere el archivo fuente en la ruta indicada; usa SQLite de pruebas y no altera la base patrimonial.
