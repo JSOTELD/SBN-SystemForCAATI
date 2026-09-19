@@ -335,8 +335,11 @@ def add_group_member(group_id):
 @assets_bp.get("/movements")
 @auth_required
 def movements():
-    asset_id = request.args.get("assetId"); query = db.select(Movement).order_by(Movement.created_at.desc())
+    asset_id = request.args.get("assetId"); status = request.args.get('status', '').strip().upper(); query = db.select(Movement).order_by(Movement.created_at.desc())
     if asset_id: query = query.where(Movement.asset_id == asset_id)
+    if status:
+        if status not in {'REQUESTED', 'APPROVED', 'DELIVERED', 'REJECTED'}: return jsonify(message='Estado de movimiento no permitido.'), 400
+        query = query.where(Movement.status == status)
     return [movement_dict(row) for row in db.session.scalars(query.limit(500)).all()]
 
 
