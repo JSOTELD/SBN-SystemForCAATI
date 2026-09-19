@@ -148,8 +148,9 @@ def logs():
 @admin_bp.get('/audit-logs.csv')
 @roles_required('ADMIN')
 def logs_csv():
+    research_entities = ['OBSERVATION', 'REPORT_TRIAL', 'RESEARCH_SAMPLE', 'RESEARCH_PHASE', 'PATRIMONIAL', 'CENSUS', 'RESEARCH_ACCOUNT', 'GUIDE_STUDY']
     action=request.args.get('action', '').strip().upper(); entity=request.args.get('entityType', '').strip().upper()
-    query=db.select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(5000, max(1, request.args.get('limit', 1000, type=int))))
+    query=db.select(AuditLog).where(~AuditLog.entity_type.in_(research_entities), (AuditLog.user_id.is_(None) | ~AuditLog.user_id.in_(db.select(User.id).where(User.role == 'RESEARCHER')))).order_by(AuditLog.created_at.desc()).limit(min(5000, max(1, request.args.get('limit', 1000, type=int))))
     if action: query=query.where(AuditLog.action == action)
     if entity: query=query.where(AuditLog.entity_type == entity)
     output=io.StringIO(); writer=csv.writer(output); writer.writerow(['id','action','entity_type','entity_id','user_id','ip_address','created_at','details'])
