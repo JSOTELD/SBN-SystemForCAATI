@@ -238,8 +238,11 @@ def dashboard():
         {"code": "DUPLICATE_SBN", "label": "Registros duplicados", "severity": "critical", "count": 0, "items": [], "note": "SBN tiene restricción UNIQUE; revisar importaciones rechazadas."},
         alert("MAINTENANCE_OVERDUE", "Mantenimiento vencido", overdue_maintenance, "critical"),
     ]
+    def percentage(value): return round((value / total) * 100, 1) if total else 0
     return {"totals": {"total": total, "operational": by_status.get("OPERATIVO", 0),
                         "complete_consistent": complete_consistent, "barcode_verified": barcode_verified, "updated": updated},
+            "indicators": {"completePercent": percentage(complete_consistent), "verifiedPercent": percentage(barcode_verified),
+                           "updatedPercent": percentage(updated), "operationalPercent": percentage(by_status.get("OPERATIVO", 0))},
             "grouping": {"ungroupedComponents": ungrouped, "incompleteGroups": incomplete_groups},
             "byType": by_type, "bySite": by_site, "recent": [row.api_dict() for row in recent],
             "alerts": alerts, "alertTotal": sum(item["count"] for item in alerts)}
