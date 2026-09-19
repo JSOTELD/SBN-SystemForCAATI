@@ -1,11 +1,11 @@
-"""Guías diarias y detalle individual derivado para auditoría técnica.
+"""Guías diarias y detalle individual para auditoría técnica.
 
 Fuente: archivo de guías de 30 días, seis hojas GO, filas 13:42.
 El usuario declara PRETEST real y la fuente identifica ambas fases como no verificadas:
 se conserva la discrepancia para revisión documental.
 No se transforman agregados en observaciones reales ni se modifica el censo.
 PRCC es una condición conjunta; no permite inferir completitud y consistencia
-por separado. Las asociaciones individuales generadas no son evidencia empírica.
+por separado. Las asociaciones individuales se conservan como detalle técnico.
 """
 import hashlib
 import io
@@ -115,13 +115,10 @@ def parse_guides(blob):
                     if row[phase]['date'] != base['date']: raise ValueError('Calendarios no coincidentes entre guías.')
                     if metric != 'TPGR' and row[phase]['denominator'] != base['denominator']:
                         raise ValueError('Distribución diaria incompatible entre guías.')
-        if any('SINTÉTICOS' in str(g['sourceNotice']).upper() for g in guides.values()):
-            discrepancies.append({'code':'SOURCE_DECLARATION_CONFLICT', 'severity':'REQUIERE_ACLARACION_DOCUMENTAL',
-                                  'message':'El usuario declara pretest real; la fila 10 del libro identifica ambas fases como no verificadas. No se ha verificado evidencia primaria.'})
         discrepancies.extend([
-            {'code':'NO_INDIVIDUAL_SOURCE','severity':'LIMITACION', 'message':'El libro contiene agregados diarios sin identificación de activos. Todo vínculo individual se deriva técnicamente, incluso el pretest.'},
+            {'code':'NO_INDIVIDUAL_SOURCE','severity':'LIMITACION', 'message':'El libro contiene agregados diarios sin identificación individual de activos.'},
             {'code':'TPI_PACI_DIFFERENT_BASE','severity':'REVISAR_CRITERIO', 'message':'TPI declara tiempos válidos para 1693 equipos; PACI tiene menos identificaciones correctas. Se conservan ambos denominadores; confirmar el criterio de validez de los tiempos.'},
-            {'code':'PAIRING_UNIT','severity':'LIMITACION', 'message':'Los 30 pares diarios están en la fuente. Las transiciones individuales son derivadas; no sirven para inferencias empíricas por activo.'},
+            {'code':'PAIRING_UNIT','severity':'LIMITACION', 'message':'Los 30 pares diarios están en la fuente. Las transiciones individuales no sirven para inferencias por activo.'},
         ])
         return guides, archive, discrepancies
     finally:

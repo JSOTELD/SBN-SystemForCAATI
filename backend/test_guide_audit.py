@@ -39,10 +39,10 @@ class GuideAuditTest(unittest.TestCase):
                 self.assertEqual(db.session.scalar(db.select(db.func.count()).select_from(Observation)),0)
                 self.assertEqual(study.guides['PRCC']['summary']['PRETEST']['numerator'],1121)
                 self.assertEqual(study.guides['PRCC']['summary']['POSTTEST']['numerator'],1601)
-                base='/api/research/simulations/'+study.id
+                base='/api/research/guides/'+study.id
                 for name in users:
                     c=app.test_client();self.assertEqual(c.post('/api/auth/login',json={'username':name,'password':'Testing12345!'}).status_code,200)
-                    for path in ['/api/research/simulations',base+'/assets',base+'/report',base+'/audit.zip',base+'/events',base+'/guides/PRCC']:
+                    for path in ['/api/research/guides',base+'/assets',base+'/report',base+'/audit.zip',base+'/events',base+'/guides/PRCC']:
                         response=c.get(path);self.assertEqual(response.status_code,200 if name=='research' else 403,path)
                         if name=='research' and path.endswith('.zip'):
                             with zipfile.ZipFile(io.BytesIO(response.data)) as z:

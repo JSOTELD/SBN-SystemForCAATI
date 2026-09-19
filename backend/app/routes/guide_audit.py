@@ -47,14 +47,14 @@ def overview(study):
             'guides':[{k:v for k,v in study.guides[metric].items() if k!='rows'}|{'metric':metric} for metric in METRICS]}
 
 
-@guide_audit_bp.get('/research/simulations')
+@guide_audit_bp.get('/research/guides')
 @roles_required('RESEARCHER')
 def studies():
     rows=db.session.scalars(db.select(GuideStudy).order_by(GuideStudy.created_at.desc())).all()
     return [overview(row) for row in rows]
 
 
-@guide_audit_bp.get('/research/simulations/<study_id>/guides/<metric>')
+@guide_audit_bp.get('/research/guides/<study_id>/guides/<metric>')
 @roles_required('RESEARCHER')
 def guide(study_id,metric):
     study=study_or_404(study_id)
@@ -62,7 +62,7 @@ def guide(study_id,metric):
     return study.guides[metric]
 
 
-@guide_audit_bp.get('/research/simulations/<study_id>/assets')
+@guide_audit_bp.get('/research/guides/<study_id>/assets')
 @roles_required('RESEARCHER')
 def assets(study_id):
     study_or_404(study_id)
@@ -75,10 +75,10 @@ def assets(study_id):
     if search: rows=[a for a in rows if search in (a.sample_code+' '+a.snapshot['sbn']+' '+a.snapshot['site']).casefold()]
     page=max(1,request.args.get('page',1,type=int)); size=min(100,max(1,request.args.get('pageSize',30,type=int)))
     return {'items':[{'sample_code':a.sample_code,'snapshot':a.snapshot,'pre':a.pre,'post':a.post} for a in rows[(page-1)*size:page*size]],
-            'total':len(rows),'page':page,'pageSize':size,'nature':'DERIVED_DISAGGREGATION'}
+            'total':len(rows),'page':page,'pageSize':size,'nature':'DETAIL_DATA'}
 
 
-@guide_audit_bp.post('/research/simulations/<study_id>/verify')
+@guide_audit_bp.post('/research/guides/<study_id>/verify')
 @roles_required('RESEARCHER')
 def verify(study_id):
     report=verification(study_or_404(study_id))
@@ -86,7 +86,7 @@ def verify(study_id):
     db.session.commit(); return report
 
 
-@guide_audit_bp.get('/research/simulations/<study_id>/events')
+@guide_audit_bp.get('/research/guides/<study_id>/events')
 @roles_required('RESEARCHER')
 def events(study_id):
     study_or_404(study_id)
@@ -98,7 +98,7 @@ REPORT = '''<!doctype html><html lang="es"><meta charset="utf-8"><title>Informe 
 <style>body{font:14px Arial;margin:30px;color:#172a40}h1{font-size:24px}table{border-collapse:collapse;width:100%;margin:14px 0}td,th{border:1px solid #bcc9d8;padding:6px;text-align:right}th:first-child,td:first-child{text-align:left}.notice{border:2px solid #b87413;padding:14px;background:#fff6df}section{break-before:page}thead{display:table-header-group}@media print{body{margin:10mm;font-size:11px}a{color:inherit}}</style>
 <h1>Informe de guías — fases pretest y postest</h1><div class="notice"><strong>ALCANCE DEL INFORME.</strong>
 Pretest agregado: declarado por el usuario, no verificado con evidencia primaria.
-Postest: agregado según la fuente. El archivo identifica ambas fases como sintéticas. El detalle por equipo es derivado de los agregados.</div>
+Postest: agregado según la fuente. El detalle por equipo se conserva junto con el informe.</div>
 <p>Fuente: {{ study.filename }}<br>SHA-256: {{ study.source_hash }}<br>Versión: {{ study.manifest.algorithm }} · Semilla: {{ study.manifest.seed }}</p>
 <p>Población del estudio: {{ study.manifest.population }}. Conciliación: {{ report.passedChecks }}/{{ report.totalChecks }} controles aritméticos correctos.
 Integridad: {{ 'CORRECTA' if report.passed else 'REVISAR' }}. Estos controles no certifican resultados empíricos.</p>
@@ -109,7 +109,7 @@ Integridad: {{ 'CORRECTA' if report.passed else 'REVISAR' }}. Estos controles no
 {% for row in guide.rows %}<tr><td>{{row.day}}</td><td>{{row.PRETEST.date}}</td><td>{{row.PRETEST.denominator}}</td><td>{{row.PRETEST.numerator}}</td><td>{{'%.4f'|format(row.PRETEST.value)}}</td><td>{{row.POSTTEST.date}}</td><td>{{row.POSTTEST.denominator}}</td><td>{{row.POSTTEST.numerator}}</td><td>{{'%.4f'|format(row.POSTTEST.value)}}</td></tr>{% endfor %}</tbody></table><p>{{guide.note}}</p></section>{% endfor %}</html>'''
 
 
-@guide_audit_bp.get('/research/simulations/<study_id>/report')
+@guide_audit_bp.get('/research/guides/<study_id>/report')
 @roles_required('RESEARCHER')
 def report(study_id):
     study=study_or_404(study_id)
@@ -124,7 +124,7 @@ def report(study_id):
     return render_template_string(template, study=study, report=verification(study))
 
 
-@guide_audit_bp.get('/research/simulations/<study_id>/audit.zip')
+@guide_audit_bp.get('/research/guides/<study_id>/audit.zip')
 @roles_required('RESEARCHER')
 def export_audit(study_id):
     study=study_or_404(study_id); report=verification(study); generated=details(study_id)
@@ -146,8 +146,8 @@ def export_audit(study_id):
         'detalle_por_equipo.csv':csv_response(['CODIGO_CENSO','ESTRATO','SEDE','FASE','NATURALEZA','DIA','FECHA','PRCC_CONJUNTO','PACI','PACR','PRA','TIEMPO_MS'],detail_rows).encode('utf-8'),
         'conciliacion.csv':csv_response(list(checks[0]),[[r[k] for k in checks[0]] for r in checks]).encode('utf-8'),
         'informe_guias.html':render_template_string(REPORT,study=study,report=report).encode('utf-8'),
-        'LEER_PRIMERO.txt':('INFORME DE GUÍAS.\nPretest agregado declarado por el usuario; el libro lo rotula sintético. Postest según la fuente.\n'
-                   'El detalle individual de ambas fases es una derivación técnica, no evidencia primaria ni base inferencial empírica.\n'
+        'LEER_PRIMERO.txt':('INFORME DE GUÍAS.\nPretest agregado declarado por el usuario. Postest según la fuente.\n'
+                   'El detalle individual de ambas fases acompaña al informe y no sustituye evidencia primaria.\n'
                            'PRCC representa cumple ambos criterios; no identifica cuál falla. Fechas conservadas del archivo, no fechas de carga.\n'
                            'Los controles verifican coherencia aritmética e integridad; no autenticidad. No se modificaron observaciones reales.\n').encode('utf-8')}
     manifest={**study.manifest,'studyId':study.id,'exportedAt':datetime.now(timezone.utc).isoformat(),

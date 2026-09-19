@@ -14,7 +14,7 @@ h1,h2,h3,h4{color:var(--ink)}
 a{color:var(--brand);text-underline-offset:3px}
 .muted,small,td small,.required-note{color:var(--muted)}
 /* Mismas dimensiones, borde y tipografía para todas las acciones. */
-button,.primary,.secondary,.sbn-chip,.scan-button,.demo-scan-button,
+button,.primary,.secondary,.sbn-chip,.scan-button,
 .toolbar>a,.actions>a,.panel>a{
   appearance:none;min-height:44px;padding:10px 16px;
   border:1px solid var(--line);border-radius:var(--control-radius);
@@ -77,8 +77,8 @@ td{border-color:#e5ecf3}tbody tr:hover{background:#f6f9fd}
 .complete-text,.completion{color:var(--success)}
 .group-card.complete{border-left:4px solid var(--success)}
 .group-card.incomplete{border-left:4px solid var(--warning)}
-.scanner-box,.demo-flow{background:#183f69;border-radius:var(--radius);box-shadow:var(--shadow)}
-.scanner-box h3,.demo-flow h3{color:#fff}
+.scanner-box{background:#183f69;border-radius:var(--radius);box-shadow:var(--shadow)}
+.scanner-box h3{color:#fff}
 .ux-message{background:#183f69;border-radius:var(--radius)}
 .ux-message button{background:#fff;color:var(--brand)}
 .filters{display:flex;flex-wrap:wrap;align-items:center}.filters input{flex:1 1 240px}.filters select{flex:1 1 170px}.filters button{flex:0 0 auto}

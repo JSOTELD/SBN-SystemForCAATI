@@ -3,7 +3,7 @@ const dashboardMenu=visibleMenu;
 visibleMenu=()=>{
   const entries=dashboardMenu();
   if(['ADMIN','INVENTORY'].includes(state.user?.role))entries.push(['operationsOverview','Resumen de jornadas']);
-  if(state.user?.role==='RESEARCHER')entries.push(['researchOverview','Resumen de tesis']);
+  if(state.user?.role==='RESEARCHER')entries.push(['researchOverview','Resumen operativo']);
   return entries;
 };
 const formatMetric=n=>Number(n).toLocaleString('es-PE',{maximumFractionDigits:2});
@@ -18,9 +18,9 @@ screens.operationsOverview=async view=>{
   view.querySelectorAll('[data-open-journal]').forEach(b=>b.onclick=()=>sessionDetail(view,b.dataset.openJournal));
 };
 screens.researchOverview=async view=>{
-  const [sample,studies]=await Promise.all([request('/research/sample'),request('/research/simulations')]);
+  const [sample,studies]=await Promise.all([request('/research/sample'),request('/research/guides')]);
   const s=sample.summary,study=studies[0];
-  view.innerHTML=`<h2>Resumen de tesis</h2><p>Cobertura del censo y resultados de las guías importadas.</p>${summaryCards([['Equipos del censo',s.selected],['Pretest individuales',s.pretestCount],['Postest individuales',s.posttestCount],['Pares individuales',s.pairedCount]])}<p>La cobertura anterior corresponde a fichas individuales. Los resultados siguientes corresponden a las guías importadas.</p><section class="panel dashboard-section"><h3>Resultados pretest y postest</h3>${study?`<div class="session-grid">${study.guides.map(g=>`<article class="panel"><h3>${escapeHtml(g.metric)}</h3><p>${escapeHtml(g.title)}</p><p>Pretest: <strong>${formatMetric(g.summary.PRETEST.value)} ${escapeHtml(g.unit)}</strong></p><p>Postest: <strong>${formatMetric(g.summary.POSTTEST.value)} ${escapeHtml(g.unit)}</strong></p><p>Diferencia: ${formatMetric(g.summary.POSTTEST.value-g.summary.PRETEST.value)} ${g.unit==='%'?'puntos porcentuales':escapeHtml(g.unit)}</p></article>`).join('')}</div>`:'<p>No hay guías importadas.</p>'}</section><details class="panel dashboard-section"><summary>Cobertura por sede</summary><div id="overview-coverage"></div></details><div class="toolbar"><button class="primary" data-target="indicators">Ver indicadores y cálculos</button><button data-target="research">Abrir censo</button><button data-target="simulation">Consultar guías</button></div>`;
+  view.innerHTML=`<h2>Resumen operativo</h2><p>Cobertura de activos y resultados de las guías importadas.</p>${summaryCards([['Equipos registrados',s.selected],['Pretest individuales',s.pretestCount],['Postest individuales',s.posttestCount],['Pares individuales',s.pairedCount]])}<p>La cobertura anterior corresponde a fichas individuales. Los resultados siguientes corresponden a las guías importadas.</p><section class="panel dashboard-section"><h3>Resultados pretest y postest</h3>${study?`<div class="session-grid">${study.guides.map(g=>`<article class="panel"><h3>${escapeHtml(g.metric)}</h3><p>${escapeHtml(g.title)}</p><p>Pretest: <strong>${formatMetric(g.summary.PRETEST.value)} ${escapeHtml(g.unit)}</strong></p><p>Postest: <strong>${formatMetric(g.summary.POSTTEST.value)} ${escapeHtml(g.unit)}</strong></p><p>Diferencia: ${formatMetric(g.summary.POSTTEST.value-g.summary.PRETEST.value)} ${g.unit==='%'?'puntos porcentuales':escapeHtml(g.unit)}</p></article>`).join('')}</div>`:'<p>No hay guías importadas.</p>'}</section><details class="panel dashboard-section"><summary>Cobertura por sede</summary><div id="overview-coverage"></div></details><div class="toolbar"><button class="primary" data-target="indicators">Ver indicadores y cálculos</button><button data-target="research">Abrir censo</button></div>`;
   const sites=new Map();sample.items.forEach(a=>{const v=sites.get(a.site)||{n:0,pre:0,post:0};v.n++;v.pre+=Number(a.has_pretest);v.post+=Number(a.has_posttest);sites.set(a.site,v);});
   view.querySelector('#overview-coverage').innerHTML=[...sites].map(([site,v])=>`<p><strong>${escapeHtml(site)}</strong> · ${v.n} equipos · ${v.pre} pretest · ${v.post} postest</p>`).join('');
   view.querySelectorAll('[data-target]').forEach(b=>b.onclick=()=>navigate(b.dataset.target));

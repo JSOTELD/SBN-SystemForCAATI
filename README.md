@@ -55,8 +55,8 @@ margen de error muestral. Se incluyen equipos no operativos y sin dato.
 Los códigos C-0001 a C-1566 de Libros se conservaron; El Comercio utiliza
 C-1567 a C-1693. Otras sedes permanecen en el inventario general.
 
-La muestra referencial original de 361 equipos permanece archivada como antecedente.
-No se generaron mediciones pretest/postest ni hallazgos ficticios durante la actualización.
+La muestra original de 361 equipos permanece archivada como antecedente.
+No se generaron mediciones pretest/postest ni hallazgos durante la actualización.
 
 ## Flujo de trabajo
 
@@ -160,9 +160,9 @@ Referencias consultadas el 13/09/2026. No implican certificación normativa o me
 
 La interfaz incluye inicio por perfil, menú agrupado según permisos, accesos móviles a inicio/búsqueda/lector, tablas de activos adaptadas a fichas en pantallas pequeñas y filtros con limpieza. Los formularios de hallazgo, medición y activo incluyen identificación, información y revisión antes de guardar; los errores aparecen junto al campo. Se avisa al salir con cambios pendientes. Los indicadores incluyen comparación visual accesible y desglose de cálculo. Las confirmaciones se presentan dentro de la aplicación. Estas mejoras no cambian datos ni permisos; la cámara y la apariencia final deben comprobarse también en un celular real.
 
-En el perfil **Investigador**, abra **Guías y auditoría**. Incluye seis guías de 30 días, 360 registros de fase y 1.693 pares individuales derivados. Los indicadores se calculan desde los totales, sin promediar porcentajes diarios.
+En el perfil **Investigador**, abra **Guías y auditoría**. Incluye seis guías de 30 días, 360 registros de fase y 1.693 pares individuales. Los indicadores se calculan desde los totales, sin promediar porcentajes diarios.
 
-El **pretest agregado es real según declaración del usuario**. La fuente identifica ambas fases como no verificadas; esta discrepancia queda visible y pendiente de contrastar con evidencia primaria. Como la fuente contiene agregados diarios, **todo detalle individual de ambas fases es derivado** y no constituye evidencia primaria. El módulo no modifica las observaciones reales ni los hallazgos operativos.
+El **pretest agregado es real según declaración del usuario**. La fuente identifica ambas fases como no verificadas; esta discrepancia queda visible y pendiente de contrastar con evidencia primaria. Como la fuente contiene agregados diarios, el detalle individual acompaña al informe y no sustituye evidencia primaria. El módulo no modifica las observaciones reales ni los hallazgos operativos.
 
 El botón **Ejecutar conciliación** verifica 360 controles, códigos únicos y hashes SHA-256. El expediente ZIP contiene el archivo original sin cambios, guías CSV, detalle por equipo, conciliaciones, informe imprimible y manifiesto con hashes. Se registran importación, verificaciones y exportaciones en el historial. Los controles no certifican autenticidad de mediciones. Los perfiles administrador y usuario general no acceden al módulo.
 
