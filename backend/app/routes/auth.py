@@ -21,6 +21,7 @@ WINDOW = 15 * 60
 
 @auth_bp.get("/health")
 def health():
+    started = time.perf_counter()
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
     try:
@@ -28,7 +29,9 @@ def health():
     except SQLAlchemyError:
         db.session.rollback()
         return {'status': 'unavailable', 'service': 'itam-sbn-api', 'database': 'unavailable'}, 503
-    return {"status": "ok", "service": "itam-sbn-api", "database": "mysql", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "ok", "service": "itam-sbn-api", "database": "mysql",
+            "database_latency_ms": round((time.perf_counter() - started) * 1000, 2),
+            "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @auth_bp.post("/auth/login")
