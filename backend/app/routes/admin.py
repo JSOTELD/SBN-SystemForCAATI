@@ -1,4 +1,6 @@
-from flask import Blueprint, jsonify, request
+import json
+from pathlib import Path
+from flask import Blueprint, current_app, jsonify, request
 from werkzeug.security import generate_password_hash
 
 from ..extensions import db
@@ -9,6 +11,33 @@ from ..services.research import is_strong_password
 from ..validation import ValidationFailure, data, required
 
 admin_bp=Blueprint("admin",__name__)
+
+@admin_bp.get('/backups')
+@roles_required('ADMIN')
+def backups():
+    folder = Path(current_app.config.get('BACKUP_FOLDER', Path(current_app.instance_path) / 'backups'))
+    items = []
+    for manifest in sorted(folder.glob('*.json'), key=lambda item: item.stat().st_mtime, reverse=True)[:100]:
+        try:
+            payload = json.loads(manifest.read_text(encoding='utf-8'))
+            sql = manifest.with_suffix('.sql')
+            payload.update({'verified': sql.exists(), 'manifest': manifest.name})
+            items.append(payload)
+        except (OSError, ValueError):
+            continue
+    return items
+
+@admin_bp.post('/backups')
+@roles_required('ADMIN')
+def create_backup_route():
+    from ..services.backup import create_backup
+    try:
+        result = create_backup(current_app)
+    except (OSError, RuntimeError) as error:
+        return jsonify(message=str(error)), 503
+    audit(current_user().id, 'CREATE', 'DATABASE_BACKUP', result['file'], {'sha256': result['sha256'], 'size_bytes': result['size_bytes']})
+    db.session.commit()
+    return result, 201
 
 @admin_bp.get("/catalogs")
 @auth_required
