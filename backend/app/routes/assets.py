@@ -32,6 +32,9 @@ def maintenance_dict(row):
 def maintenance_list():
     from datetime import datetime, timezone
     query = db.select(MaintenancePlan).order_by(MaintenancePlan.due_date)
+    if current_user().role != 'ADMIN':
+        from ..security import scoped_assets
+        query = query.where(MaintenancePlan.asset_id.in_(scoped_assets(db.select(Asset.id))))
     status = request.args.get('status', '').strip().upper()
     if status: query = query.where(MaintenancePlan.status == status)
     if request.args.get('overdue') == '1': query = query.where(MaintenancePlan.status == 'PLANNED', MaintenancePlan.due_date < datetime.now(timezone.utc))
@@ -48,7 +51,11 @@ def maintenance_list():
 @assets_bp.get('/maintenance.csv')
 @auth_required
 def maintenance_csv():
-    rows = db.session.scalars(db.select(MaintenancePlan).order_by(MaintenancePlan.due_date).limit(5000)).all()
+    query = db.select(MaintenancePlan).order_by(MaintenancePlan.due_date)
+    if current_user().role != 'ADMIN':
+        from ..security import scoped_assets
+        query = query.where(MaintenancePlan.asset_id.in_(scoped_assets(db.select(Asset.id))))
+    rows = db.session.scalars(query.limit(5000)).all()
     output = io.StringIO(); writer = csv.writer(output)
     fields = ['sbn', 'description', 'plan_type', 'due_date', 'status', 'provider', 'responsible', 'cost', 'completed_at', 'notes']
     writer.writerow(fields)
