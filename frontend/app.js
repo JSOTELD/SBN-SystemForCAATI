@@ -78,7 +78,7 @@ function renderLogin() {
 
 const menu = [
   ['dashboard', '▦  Panel de control'], ['assets', '▣  Activos TI'], ['register', '＋  Registrar activo'],
-  ['scanner', 'Consultar etiqueta'], ['groups', '⌘  Agrupaciones'], ['inventory', 'Verificación física'], ['maintenance', 'Mantenimiento'], ['research', 'Cobertura operativa'], ['indicators', 'Indicadores'], ['users', 'Usuarios'], ['catalogs', 'Catálogos'], ['audit', 'Auditoría'], ['settings', '⚙  Configuración']
+  ['scanner', 'Consultar etiqueta'], ['groups', '⌘  Agrupaciones'], ['inventory', 'Verificación física'], ['maintenance', 'Mantenimiento'], ['movements', 'Movimientos'], ['research', 'Cobertura operativa'], ['indicators', 'Indicadores'], ['users', 'Usuarios'], ['catalogs', 'Catálogos'], ['audit', 'Auditoría'], ['settings', '⚙  Configuración']
 ];
 
 function renderShell() {
@@ -327,6 +327,18 @@ async function inventory(view) {
   const button = view.querySelector('#create'); if (button) button.onclick = async () => { const name = await uiPrompt('Nombre de la jornada'); if (name) { await request('/inventory-sessions', { method: 'POST', body: JSON.stringify({ name, phase: 'POSTTEST' }) }); navigate('inventory'); } };
 }
 
+async function movements(view) {
+  const rows = await request('/movements');
+  const actions = row => row.status === 'REQUESTED' ? `<button data-action="approve" data-id="${row.id}">Aprobar</button><button data-action="reject" data-id="${row.id}">Rechazar</button>` : row.status === 'APPROVED' ? `<button class="primary" data-action="deliver" data-id="${row.id}">Confirmar entrega</button>` : '';
+  view.innerHTML = `<div class="toolbar"><div><h2>Movimientos patrimoniales</h2><p class="muted">Revise, apruebe y confirme traslados con trazabilidad.</p></div><button class="secondary" id="export-movement-list">Exportar CSV</button></div><div class="table-wrap"><table><thead><tr><th>Activo</th><th>Destino</th><th>Responsable</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.asset_id)}</td><td>${escapeHtml(row.new_site || '-')}</td><td>${escapeHtml(row.new_responsible || '-')}</td><td><span class="badge">${escapeHtml(row.status)}</span></td><td class="actions">${actions(row)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No hay movimientos registrados.</td></tr>'}</tbody></table></div>`;
+  view.querySelector('#export-movement-list').onclick = () => { window.location.href = API + '/movements.csv'; };
+  view.querySelectorAll('[data-action]').forEach(button => button.onclick = async () => {
+    const action = button.dataset.action; const reason = action === 'reject' ? await uiPrompt('Motivo del rechazo') : null;
+    if (action === 'reject' && !reason) return;
+    try { await request(`/movements/${button.dataset.id}/${action}`, {method: 'POST', body: action === 'reject' ? JSON.stringify({reason}) : undefined}); await movements(view); }
+    catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); }
+  });
+}
 async function users(view) { const rows = await request('/users'); renderTable(view, 'Usuarios', ['Usuario', 'Nombre', 'Correo', 'Rol'], rows.map(row => [row.username, row.fullName, row.email, row.role])); }
 async function maintenance(view) {
   const rows = await request('/maintenance');
@@ -347,5 +359,5 @@ async function settings(view) {
   view.querySelector('#password').onsubmit = async event => { event.preventDefault(); try { await request('/auth/change-password', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); view.querySelector('#settings-message').innerHTML = notice('Contraseña actualizada. Inicie sesión nuevamente.', 'success'); setTimeout(logout, 1200); } catch (error) { view.querySelector('#settings-message').innerHTML = notice(error.message); } };
 }
 
-const screens = { dashboard, assets, register, scanner, groups, inventory, maintenance, research, indicators, users, catalogs, audit, settings };
+const screens = { dashboard, assets, register, scanner, groups, inventory, maintenance, movements, research, indicators, users, catalogs, audit, settings };
 // Inicio de sesión recuperado mediante cookie HttpOnly en portal.js.
