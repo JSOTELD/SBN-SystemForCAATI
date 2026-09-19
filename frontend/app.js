@@ -341,27 +341,18 @@ async function movements(view) {
 }
 async function users(view) { const rows = await request('/users'); renderTable(view, 'Usuarios', ['Usuario', 'Nombre', 'Correo', 'Rol'], rows.map(row => [row.username, row.fullName, row.email, row.role])); }
 async function maintenance(view) {
-  const rows = await request('/maintenance');
-  view.innerHTML = `<div class="toolbar"><div><h2>Mantenimiento preventivo</h2><p class="muted">Planifique intervenciones y atienda vencimientos.</p></div><div class="page-actions"><button class="secondary" id="export-maintenance">Exportar CSV</button><button class="primary" id="new-maintenance">Nuevo plan</button></div></div><div class="cards"><div class="card">Planes<strong>${rows.length}</strong></div><div class="card">Vencidos<strong>${rows.filter(row => row.overdue).length}</strong></div><div class="card">Completados<strong>${rows.filter(row => row.status === 'COMPLETED').length}</strong></div></div><div class="table-wrap"><table><thead><tr><th>Activo</th><th>Fecha</th><th>Estado</th><th>Responsable</th><th>Proveedor</th></tr></thead><tbody>${rows.map(row => `<tr class="${row.overdue ? 'warning-row' : ''}"><td><strong>${escapeHtml(row.sbn || 'Sin activo')}</strong><small>${escapeHtml(row.description || '')}</small></td><td>${escapeHtml(row.dueDate.slice(0, 10))}${row.overdue ? ' - Vencido' : ''}</td><td><span class="badge">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.responsible || '-')}</td><td>${escapeHtml(row.provider || '-')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No hay planes registrados.</td></tr>'}</tbody></table></div>`;
+  const render = async () => {
+    const status = view.querySelector('#maintenance-status')?.value || '';
+    const overdue = view.querySelector('#maintenance-overdue')?.checked ? '&overdue=1' : '';
+    const rows = await request('/maintenance?' + (status ? 'status=' + encodeURIComponent(status) : '') + overdue);
+    view.querySelector('#maintenance-count').textContent = `${rows.length} planes`;
+    view.querySelector('#maintenance-table').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Activo</th><th>Fecha</th><th>Estado</th><th>Responsable</th><th>Proveedor</th></tr></thead><tbody>${rows.map(row => `<tr class="${row.overdue ? 'warning-row' : ''}"><td><strong>${escapeHtml(row.sbn || 'Sin activo')}</strong><small>${escapeHtml(row.description || '')}</small></td><td>${escapeHtml(row.dueDate.slice(0, 10))}${row.overdue ? ' - Vencido' : ''}</td><td><span class="badge">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.responsible || '-')}</td><td>${escapeHtml(row.provider || '-')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No hay planes registrados.</td></tr>'}</tbody></table></div>`;
+  };
+  view.innerHTML = `<div class="toolbar"><div><h2>Mantenimiento preventivo</h2><p class="muted">Planifique intervenciones y atienda vencimientos. <span id="maintenance-count"></span></p></div><div class="page-actions"><button class="secondary" id="export-maintenance">Exportar CSV</button><button class="primary" id="new-maintenance">Nuevo plan</button></div></div><div class="filters"><select id="maintenance-status"><option value="">Todos los estados</option><option value="PLANNED">Planificados</option><option value="IN_PROGRESS">En curso</option><option value="COMPLETED">Completados</option><option value="CANCELLED">Cancelados</option></select><label class="check-option"><input type="checkbox" id="maintenance-overdue"> Solo vencidos</label></div><div id="maintenance-table"></div>`;
+  view.querySelector('#maintenance-status').onchange = render; view.querySelector('#maintenance-overdue').onchange = render;
   view.querySelector('#export-maintenance').onclick = () => { window.location.href = API + '/maintenance.csv'; };
-  view.querySelector('#new-maintenance').onclick = async () => {
-    const assetId = await uiPrompt('ID del activo'); if (!assetId) return;
-    const dueDate = await uiPrompt('Fecha programada (AAAA-MM-DD)'); if (!dueDate) return;
-    try { await request('/maintenance', { method: 'POST', body: JSON.stringify({ assetId, dueDate, planType: 'PREVENTIVE' }) }); await maintenance(view); }
-    catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); }
-  };
-  let importFile = null;
-  const previewButton = view.querySelector('#import-preview');
-  if (previewButton) previewButton.onclick = async () => {
-    const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xlsm'; input.click();
-    input.onchange = async () => { if (!input.files[0]) return; importFile = input.files[0]; previewButton.disabled = true; previewButton.textContent = 'Analizando...'; try {
-      const body = new FormData(); body.append('file', input.files[0]); const preview = await request('/patrimonial/import-preview', {method: 'POST', body});
-      view.insertAdjacentHTML('afterbegin', `<div class="alert info" id="import-preview-result"><strong>Previsualización lista.</strong> Nuevos: ${preview.new_assets || 0} · Duplicados: ${preview.duplicate_assets || 0} · Cambios: ${preview.changed_assets || 0}. La base no fue modificada. <button class="secondary" id="execute-import">Importar archivo validado</button></div>`);
-      view.querySelector('#execute-import').onclick = async () => { if (!importFile || !window.confirm('¿Ejecutar la importación patrimonial?')) return; const execute = view.querySelector('#execute-import'); execute.disabled = true; execute.textContent = 'Importando...'; try { const form = new FormData(); form.append('file', importFile); const result = await request('/patrimonial/import', {method: 'POST', body: form}); view.querySelector('#import-preview-result').innerHTML = `<strong>Importación completada.</strong> Nuevos: ${result.imported || result.new_assets || 0}.`; } catch (error) { view.querySelector('#import-preview-result').insertAdjacentHTML('beforeend', notice(error.message)); } };
-    } catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); } finally { previewButton.disabled = false; previewButton.textContent = 'Previsualizar Excel'; } };
-  };
-  const backupButton = view.querySelector('#backup-history');
-  if (backupButton) backupButton.onclick = async () => { try { const rows = await request('/backups'); const text = rows.length ? rows.map(row => `${row.file} · ${Math.round((row.size_bytes || 0) / 1024)} KB · ${row.verified ? 'Disponible' : 'Falta SQL'}`).join('\n') : 'No hay respaldos registrados.'; window.alert(text); } catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); } };
+  view.querySelector('#new-maintenance').onclick = async () => { const assetId = await uiPrompt('ID del activo'); if (!assetId) return; const dueDate = await uiPrompt('Fecha programada (AAAA-MM-DD)'); if (!dueDate) return; try { await request('/maintenance', { method: 'POST', body: JSON.stringify({ assetId, dueDate, planType: 'PREVENTIVE' }) }); await render(); } catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); } };
+  await render();
 }
 async function catalogs(view) { const rows = await request('/catalogs'); renderTable(view, 'Catálogos', ['Categoría', 'Código', 'Etiqueta'], rows.map(row => [row.category, row.code, row.label])); }
 async function audit(view) { const rows = await request('/audit-logs'); renderTable(view, 'Auditoría', ['Fecha', 'Acción', 'Entidad', 'IP'], rows.map(row => [row.created_at, row.action, row.entity_type, row.ip_address || '—'])); }
