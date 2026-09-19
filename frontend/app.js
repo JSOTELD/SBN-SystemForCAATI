@@ -349,12 +349,14 @@ async function maintenance(view) {
     try { await request('/maintenance', { method: 'POST', body: JSON.stringify({ assetId, dueDate, planType: 'PREVENTIVE' }) }); await maintenance(view); }
     catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); }
   };
+  let importFile = null;
   const previewButton = view.querySelector('#import-preview');
   if (previewButton) previewButton.onclick = async () => {
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xlsm'; input.click();
-    input.onchange = async () => { if (!input.files[0]) return; previewButton.disabled = true; previewButton.textContent = 'Analizando...'; try {
+    input.onchange = async () => { if (!input.files[0]) return; importFile = input.files[0]; previewButton.disabled = true; previewButton.textContent = 'Analizando...'; try {
       const body = new FormData(); body.append('file', input.files[0]); const preview = await request('/patrimonial/import-preview', {method: 'POST', body});
-      view.insertAdjacentHTML('afterbegin', `<div class="alert info"><strong>Previsualización lista.</strong> Nuevos: ${preview.new_assets || 0} · Duplicados: ${preview.duplicate_assets || 0} · Cambios: ${preview.changed_assets || 0}. La base no fue modificada.</div>`);
+      view.insertAdjacentHTML('afterbegin', `<div class="alert info" id="import-preview-result"><strong>Previsualización lista.</strong> Nuevos: ${preview.new_assets || 0} · Duplicados: ${preview.duplicate_assets || 0} · Cambios: ${preview.changed_assets || 0}. La base no fue modificada. <button class="secondary" id="execute-import">Importar archivo validado</button></div>`);
+      view.querySelector('#execute-import').onclick = async () => { if (!importFile || !window.confirm('¿Ejecutar la importación patrimonial?')) return; const execute = view.querySelector('#execute-import'); execute.disabled = true; execute.textContent = 'Importando...'; try { const form = new FormData(); form.append('file', importFile); const result = await request('/patrimonial/import', {method: 'POST', body: form}); view.querySelector('#import-preview-result').innerHTML = `<strong>Importación completada.</strong> Nuevos: ${result.imported || result.new_assets || 0}.`; } catch (error) { view.querySelector('#import-preview-result').insertAdjacentHTML('beforeend', notice(error.message)); } };
     } catch (error) { view.insertAdjacentHTML('afterbegin', notice(error.message)); } finally { previewButton.disabled = false; previewButton.textContent = 'Previsualizar Excel'; } };
   };
 }
