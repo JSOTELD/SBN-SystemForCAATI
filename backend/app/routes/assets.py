@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import csv
 import io
@@ -239,7 +239,9 @@ def dashboard():
     missing_responsible = missing("responsible_person")
     missing_serial = missing("serial_number")
     open_sessions = db.session.scalars(db.select(InventorySession).where(InventorySession.status == "OPEN").order_by(InventorySession.started_at.desc()).limit(100)).all()
-    overdue_maintenance = db.session.scalars(db.select(MaintenancePlan).where(MaintenancePlan.status == "PLANNED", MaintenancePlan.due_date < datetime.now(timezone.utc)).order_by(MaintenancePlan.due_date).limit(100)).all()
+    now = datetime.now(timezone.utc)
+    overdue_maintenance = db.session.scalars(db.select(MaintenancePlan).where(MaintenancePlan.status == "PLANNED", MaintenancePlan.due_date < now).order_by(MaintenancePlan.due_date).limit(100)).all()
+    upcoming_maintenance = db.session.scalars(db.select(MaintenancePlan).where(MaintenancePlan.status == "PLANNED", MaintenancePlan.due_date >= now, MaintenancePlan.due_date <= now + timedelta(days=30)).order_by(MaintenancePlan.due_date).limit(100)).all()
     def alert(code, label, rows, severity="warning"):
         return {"code": code, "label": label, "severity": severity, "count": len(rows),
                 "items": [{"id": getattr(row, "id", None), "sbn": getattr(row, "sbn", None),
@@ -252,6 +254,7 @@ def dashboard():
         alert("OPEN_INVENTORY_SESSIONS", "Jornadas con pendientes", open_sessions),
         {"code": "DUPLICATE_SBN", "label": "Registros duplicados", "severity": "critical", "count": 0, "items": [], "note": "SBN tiene restricción UNIQUE; revisar importaciones rechazadas."},
         alert("MAINTENANCE_OVERDUE", "Mantenimiento vencido", overdue_maintenance, "critical"),
+        alert("MAINTENANCE_UPCOMING", "Mantenimiento próximo", upcoming_maintenance, "info"),
     ]
     def percentage(value): return round((value / total) * 100, 1) if total else 0
     return {"totals": {"total": total, "operational": by_status.get("OPERATIVO", 0),
