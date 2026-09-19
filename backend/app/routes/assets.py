@@ -187,6 +187,7 @@ def delete_asset(asset_id):
 @assets_bp.get("/dashboard")
 @auth_required
 def dashboard():
+    from datetime import datetime, timezone
     total = db.session.scalar(db.select(func.count(Asset.id))) or 0
     by_status = dict(db.session.execute(db.select(Asset.status, func.count()).group_by(Asset.status)).all())
     complete_consistent = db.session.scalar(db.select(func.count(Asset.id)).where(Asset.record_complete.is_(True), Asset.record_consistent.is_(True))) or 0
@@ -204,6 +205,7 @@ def dashboard():
     missing_responsible = missing("responsible_person")
     missing_serial = missing("serial_number")
     open_sessions = db.session.scalars(db.select(InventorySession).where(InventorySession.status == "OPEN").order_by(InventorySession.started_at.desc()).limit(100)).all()
+    overdue_maintenance = db.session.scalars(db.select(MaintenancePlan).where(MaintenancePlan.status == "PLANNED", MaintenancePlan.due_date < datetime.now(timezone.utc)).order_by(MaintenancePlan.due_date).limit(100)).all()
     def alert(code, label, rows, severity="warning"):
         return {"code": code, "label": label, "severity": severity, "count": len(rows),
                 "items": [{"id": getattr(row, "id", None), "sbn": getattr(row, "sbn", None),
@@ -215,7 +217,7 @@ def dashboard():
         alert("UNGROUPED_COMPONENTS", "Componentes sin agrupar", db.session.scalars(db.select(Asset).where(Asset.asset_type.in_(["ALL_IN_ONE", "MONITOR", "KEYBOARD", "CPU", "TYPE_1", "TYPE_2", "TYPE_3"]), ~Asset.group_membership.has()).order_by(Asset.sbn).limit(100)).all()),
         alert("OPEN_INVENTORY_SESSIONS", "Jornadas con pendientes", open_sessions),
         {"code": "DUPLICATE_SBN", "label": "Registros duplicados", "severity": "critical", "count": 0, "items": [], "note": "SBN tiene restricción UNIQUE; revisar importaciones rechazadas."},
-        {"code": "MAINTENANCE_OVERDUE", "label": "Mantenimiento vencido", "severity": "info", "count": 0, "items": [], "note": "Sin módulo de mantenimiento configurado."},
+        alert("MAINTENANCE_OVERDUE", "Mantenimiento vencido", overdue_maintenance, "critical"),
     ]
     return {"totals": {"total": total, "operational": by_status.get("OPERATIVO", 0),
                         "complete_consistent": complete_consistent, "barcode_verified": barcode_verified, "updated": updated},
