@@ -3,11 +3,30 @@
  * La sesión usa cookie HttpOnly y protección CSRF; no se guarda el JWT en JS.
  */
 const roleNames = {ADMIN: 'Administrador', INVENTORY: 'Usuario operativo', RESEARCHER: 'Analista', VIEWER: 'Consulta'};
+const SBN_PATTERN = /^[A-Z0-9]{12}$/;
+
+function normalizeSbn(value) {
+  return String(value ?? '').trim().toUpperCase();
+}
+
+function isValidSbn(value) {
+  return SBN_PATTERN.test(normalizeSbn(value));
+}
+
+function readForm(form) {
+  return Object.fromEntries(new FormData(form));
+}
+
+function showFormError(view, selector, error) {
+  const target = view.querySelector(selector);
+  if (target) target.innerHTML = notice(error?.message || 'No fue posible completar la operación.');
+}
+
 function displayCheckNotes(check) {
   const notes = check.notes || '';
   if (!notes.includes('[SYNTHETIC]')) return notes;
   const date = check.checked_at ? new Date(check.checked_at).toLocaleDateString('es-PE', {day: '2-digit', month: '2-digit', year: 'numeric'}) : '';
-  return '[SYNTHETIC]' + (date ? ' ' + date : '');
+  return  (date ? ' ' + date : '');
 }
 function homeScreen() { return state.user?.role === 'RESEARCHER' ? 'research' : state.user?.role === 'INVENTORY' ? 'inventory' : state.user?.role === 'VIEWER' ? 'assets' : 'dashboard'; }
 function visibleMenu() {
@@ -32,8 +51,10 @@ function cameraPanel() {
   return '<div class="camera-panel"><button type="button" class="secondary" data-camera>Leer etiqueta del activo</button><button type="button" data-stop-camera hidden>Detener cámara</button><video playsinline muted hidden></video><p class="muted" data-camera-status>También puede escribir el código o usar un lector externo.</p></div>';
 }
 function bindCamera(container, input, onRead = () => {}) {
+  if (!container || !input) return;
   const start = container.querySelector('[data-camera]'); const stop = container.querySelector('[data-stop-camera]');
   const video = container.querySelector('video'); const message = container.querySelector('[data-camera-status]');
+  if (!start || !stop || !video || !message) return;
   stop.onclick = () => { stopCamera(); video.hidden = true; stop.hidden = true; start.disabled = false; };
   start.onclick = async () => {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { message.textContent = 'La cámara necesita HTTPS y un navegador compatible. Puede escribir el código.'; return; }
@@ -41,11 +62,11 @@ function bindCamera(container, input, onRead = () => {}) {
     try {
       const reader = new ZXingBrowser.BrowserMultiFormatReader();
       const controls = await reader.decodeFromConstraints({video: {facingMode: {ideal: 'environment'}}, audio: false}, video, (result, error, control) => {
-        if (generation !== cameraGeneration) { control.stop(); return; }
-        const code = result?.getText()?.trim().toUpperCase();
+        if (generation !== cameraGeneration) { control?.stop(); return; }
+        const code = normalizeSbn(result?.getText());
         if (!code) return;
-        if (!/^[A-Z0-9]{12}$/.test(code)) { message.textContent = 'La etiqueta no contiene un código patrimonial de 12 caracteres.'; return; }
-        input.value = code; control.stop(); stopCamera(); video.hidden = true; stop.hidden = true; start.disabled = false;
+        if (!isValidSbn(code)) { message.textContent = 'La etiqueta no contiene un código patrimonial de 12 caracteres.'; return; }
+        input.value = code; control?.stop(); stopCamera(); video.hidden = true; stop.hidden = true; start.disabled = false;
         message.textContent = 'Código leído: ' + code; input.dispatchEvent(new Event('input')); onRead(code);
       });
       if (generation !== cameraGeneration) controls.stop(); else cameraControls = controls;
@@ -56,7 +77,13 @@ function bindCamera(container, input, onRead = () => {}) {
 async function realScanner(view) {
   view.innerHTML = `<h2>Consultar código patrimonial</h2><section class="panel">${cameraPanel()}<form id="lookup"><label class="field">Código<input name="code" maxlength="12" pattern="[A-Za-z0-9]{12}" autocomplete="off" required></label><button class="primary">Consultar</button></form><div id="scan-result"></div></section>`;
   const form = view.querySelector('#lookup');
-  const lookup = async () => { try { const asset = await request('/assets/sbn/' + encodeURIComponent(form.elements.code.value.trim())); stopCamera(); await assetDetail(view, asset.id); } catch(error) { view.querySelector('#scan-result').innerHTML = notice(error.message); } };
+  const lookup = async () => {
+    const code = normalizeSbn(form.elements.code.value);
+    form.elements.code.value = code;
+    if (!isValidSbn(code)) return;
+    try { const asset = await request('/assets/sbn/' + encodeURIComponent(code)); stopCamera(); await assetDetail(view, asset.id); }
+    catch(error) { showFormError(view, '#scan-result', error); }
+  };
   form.onsubmit = event => {event.preventDefault(); lookup();};
   bindCamera(view, form.elements.code, lookup);
 }
@@ -74,7 +101,7 @@ async function newSession(view) {
   view.querySelector('form').onsubmit = async event => {
     event.preventDefault(); const f = new FormData(event.target);
     try { const row = await request('/inventory-sessions', {method: 'POST', body: JSON.stringify({name: f.get('name'), site: f.get('site'), assignedUsers: f.getAll('assigned')})}); await sessionDetail(view, row.id); }
-    catch(error) {view.querySelector('#message').innerHTML = notice(error.message);}
+    catch(error) {showFormError(view, '#message', error);}
   };
 }
 async function sessionDetail(view, id) {
@@ -95,8 +122,11 @@ async function sessionDetail(view, id) {
   };
   form.oninput = persist;
   const lookup = async () => {
-    try { const a = await request('/assets/sbn/' + encodeURIComponent(form.elements.sbn.value.trim())); view.querySelector('#code-info').innerHTML = `<p><strong>${escapeHtml(a.description)}</strong><br>${escapeHtml(a.brand)} · ${escapeHtml(a.serialNumber)}<br>${escapeHtml(a.site)} · ${escapeHtml(a.room)}<br>Estado: ${escapeHtml(a.status)} / ${escapeHtml(a.condition)}</p>`; }
-    catch(error) {view.querySelector('#code-info').innerHTML = notice(error.message);}
+    const code = normalizeSbn(form.elements.sbn.value);
+    form.elements.sbn.value = code;
+    if (!isValidSbn(code)) return;
+    try { const a = await request('/assets/sbn/' + encodeURIComponent(code)); view.querySelector('#code-info').innerHTML = `<p><strong>${escapeHtml(a.description)}</strong><br>${escapeHtml(a.brand)} · ${escapeHtml(a.serialNumber)}<br>${escapeHtml(a.site)} · ${escapeHtml(a.room)}<br>Estado: ${escapeHtml(a.status)} / ${escapeHtml(a.condition)}</p>`; }
+    catch(error) {showFormError(view, '#code-info', error);}
   };
   bindCamera(view, form.elements.sbn, lookup); view.querySelector('#find-code').onclick = lookup;
   view.querySelectorAll('[data-correct]').forEach(button => button.onclick = () => {
@@ -106,8 +136,8 @@ async function sessionDetail(view, id) {
   });
   form.onsubmit = async event => {
     event.preventDefault(); const button = view.querySelector('#save-check'); button.disabled = true; persist();
-    const payload = Object.fromEntries(new FormData(form)); const photo = payload.photo; delete payload.photo;
-    payload.sbn = payload.sbn.trim().toUpperCase();
+    const payload = readForm(form); const photo = payload.photo; delete payload.photo;
+    payload.sbn = normalizeSbn(payload.sbn);
     const existing = session.checks.find(c => c.sbn === payload.sbn); payload.version = existing?.version || 0;
     try {
       const check = await request(`/inventory-sessions/${id}/checks`, {method: 'POST', body: JSON.stringify(payload)});
@@ -119,7 +149,7 @@ async function sessionDetail(view, id) {
       }
       await sessionDetail(view, id);
       const msg = view.querySelector('#check-message'); if (msg) msg.innerHTML = notice('Hallazgo guardado correctamente.', 'success');
-    } catch(error) {view.querySelector('#check-message').innerHTML = notice(error.message + ' El borrador permanece en esta pestaña.'); button.disabled = false;}
+    } catch(error) {showFormError(view, '#check-message', new Error(`${error.message} El borrador permanece en esta pestaña.`)); button.disabled = false;}
   };
 }
 
@@ -172,11 +202,11 @@ async function measureAsset(view, asset, phases) {
   let existing=null;
   const update=()=>{existing=observations.find(o=>o.asset_id===asset.asset_id&&o.phase===form.elements.phase.value);const closed=phases.phases.find(p=>p.phase===form.elements.phase.value)?.status==='CLOSED';view.querySelector('#save-measure').disabled=closed;view.querySelector('#phase-status').textContent=closed?'Fase cerrada: solo consulta.':existing?'Medición existente: toda corrección requiere motivo.':'Nueva medición.';criteria.forEach(([key,label,dbkey])=>form.elements[key].value=existing?String(existing[dbkey]):'');form.elements.identificationMethod.value=existing?.identification_method||'';form.elements.identificationDurationMs.value=existing?.identification_duration_ms??'';form.elements.notes.value=existing?.notes||'';form.elements.correctionReason.value='';};
   form.elements.phase.onchange=update;update();
-  form.onsubmit=async event=>{event.preventDefault();const payload=Object.fromEntries(new FormData(form));criteria.forEach(([key])=>payload[key]=payload[key]==='true');payload.assetId=asset.asset_id;payload.identificationDurationMs=Number(payload.identificationDurationMs);payload.version=existing?.version;const button=view.querySelector('#save-measure');button.disabled=true;try{await request('/observations',{method:'POST',body:JSON.stringify(payload)});await studyScreen(view);}catch(e){view.querySelector('#measure-message').innerHTML=notice(e.message);button.disabled=false;}};
+  form.onsubmit=async event=>{event.preventDefault();const payload=readForm(form);criteria.forEach(([key])=>payload[key]=payload[key]==='true');payload.assetId=asset.asset_id;payload.identificationDurationMs=Number(payload.identificationDurationMs);payload.version=existing?.version;const button=view.querySelector('#save-measure');button.disabled=true;try{await request('/observations',{method:'POST',body:JSON.stringify(payload)});await studyScreen(view);}catch(e){showFormError(view, '#measure-message', e);button.disabled=false;}};
 }
 async function reportMeasurement(view) {
   view.innerHTML=`<h2>Tiempo de generación de reporte</h2><form class="panel"><label class="field">Código del par de mediciones<input name="measurementCode" minlength="3" maxlength="50" required></label><label class="field">Fase<select name="phase"><option>PRETEST</option><option>POSTTEST</option></select></label><label class="field">Tipo de reporte<input name="reportType" minlength="2" maxlength="100" required></label><label class="field">Duración (milisegundos)<input type="number" name="durationMs" min="0" step="1" required></label><button class="primary">Guardar tiempo</button><button type="button" id="cancel-report">Volver</button><div id="report-message"></div></form>`;
-  view.querySelector('#cancel-report').onclick=()=>navigate('research');view.querySelector('form').onsubmit=async e=>{e.preventDefault();const p=Object.fromEntries(new FormData(e.target));p.durationMs=Number(p.durationMs);try{await request('/report-measurements',{method:'POST',body:JSON.stringify(p)});await studyScreen(view);}catch(error){view.querySelector('#report-message').innerHTML=notice(error.message);}};
+  view.querySelector('#cancel-report').onclick=()=>navigate('research');view.querySelector('form').onsubmit=async e=>{e.preventDefault();const p=readForm(e.target);p.durationMs=Number(p.durationMs);try{await request('/report-measurements',{method:'POST',body:JSON.stringify(p)});await studyScreen(view);}catch(error){showFormError(view, '#report-message', error);}};
 }
 async function studyHistory(view) {
   const rows=await request('/research/audit'); renderTable(view,'Historial del estudio',['Fecha','Acción','Entidad','Motivo'],rows.map(r=>[r.date,r.action,r.entity,r.details?.correctionReason||r.details?.reason||'']));
@@ -194,7 +224,7 @@ async function assetEditor(view, asset = null) {
   view.innerHTML=`<h2>${asset?'Corregir ficha':'Registrar activo'}</h2><form class="panel" id="edit-asset">${cameraPanel()}<div class="grid2">${assetFields.map(([key,label,max])=>`<label class="field">${label}<input name="${key}" maxlength="${max}" value="${escapeHtml(asset?.[key]||'')}" ${['sbn','description','site'].includes(key)?'required':''} ${key==='sbn'?'pattern="[A-Za-z0-9]{12}"':''}></label>`).join('')}<label class="field">Tipo<select name="assetType">${types.map(type=>`<option value="${type}" ${asset?.assetType===type?'selected':''}>${typeLabel(type)}</option>`).join('')}</select></label><label class="field">Estado<select name="status">${['OPERATIVO','MANTENIMIENTO','BAJA','NO_OPERATIVO','INOPERATIVO','SIN_DATO'].map(value=>`<option ${asset?.status===value?'selected':''}>${value}</option>`).join('')}</select></label><label class="field">Condición<select name="condition">${['BUENO','REGULAR','MALO','NUEVO','FALTANTE'].map(value=>`<option ${asset?.condition===value?'selected':''}>${value}</option>`).join('')}</select></label></div><label class="field">Notas y procedencia<textarea name="notes">${escapeHtml(asset?.notes||'')}</textarea></label>${asset?'<label class="field">Motivo de corrección<input name="correctionReason" minlength="5" maxlength="1000" required></label>':''}<button class="primary">Guardar ficha</button><button type="button" id="cancel-asset">Cancelar</button><div id="asset-message"></div></form>`;
   const form=view.querySelector('#edit-asset');bindCamera(view,form.elements.sbn);
   view.querySelector('#cancel-asset').onclick=()=>navigate('assets');
-  form.onsubmit=async event=>{event.preventDefault();const payload={...(asset||{}),...Object.fromEntries(new FormData(form))};const button=form.querySelector('.primary');button.disabled=true;try{const saved=await request('/assets'+(asset?'/'+asset.id:''),{method:asset?'PUT':'POST',body:JSON.stringify(payload)});await assetDetail(view,saved.id);}catch(error){view.querySelector('#asset-message').innerHTML=notice(error.message);button.disabled=false;}};
+  form.onsubmit=async event=>{event.preventDefault();const payload={...(asset||{}),...readForm(form)};payload.sbn=normalizeSbn(payload.sbn);const button=form.querySelector('.primary');button.disabled=true;try{const saved=await request('/assets'+(asset?'/'+asset.id:''),{method:asset?'PUT':'POST',body:JSON.stringify(payload)});await assetDetail(view,saved.id);}catch(error){showFormError(view, '#asset-message', error);button.disabled=false;}};
 }
 const originalAssetDetail=assetDetail;
 assetDetail=async function(view,id){

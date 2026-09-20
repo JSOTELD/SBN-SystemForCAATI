@@ -12,6 +12,7 @@ const state = {
   pendingScanValue: null,
   completedGroup: null
 };
+let navigationVersion = 0;
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -95,6 +96,7 @@ function renderShell() {
 }
 
 async function navigate(screen) {
+  const version = ++navigationVersion;
   stopCamera();
   if (!visibleMenu().some(([id]) => id === screen)) screen = homeScreen();
   if (state.user.mustChangePassword) screen = 'settings';
@@ -103,8 +105,18 @@ async function navigate(screen) {
   document.querySelectorAll('[data-screen]').forEach(button => button.classList.toggle('active', button.dataset.screen === screen));
   document.querySelector('#title').textContent = menu.find(item => item[0] === screen)?.[1] || 'Sistema';
   const view = document.querySelector('#view');
+  if (!view) return;
   view.innerHTML = '<p class="loading">Cargando…</p>';
-  try { await screens[screen](view); } catch (error) { view.innerHTML = notice(error.message); }
+  const nextView = view.cloneNode(false);
+  try {
+    await screens[screen](nextView);
+    if (version !== navigationVersion || state.screen !== screen || !view.isConnected) return;
+    view.replaceWith(nextView);
+  } catch (error) {
+    if (version === navigationVersion && state.screen === screen && view.isConnected) {
+      view.innerHTML = notice(error.message);
+    }
+  }
 }
 
 async function dashboard(view) {
@@ -115,7 +127,7 @@ async function dashboard(view) {
     <section class="panel operational-alerts"><div class="section-title"><div><h3>Alertas operativas</h3><p class="muted">Prioriza los registros que requieren revisión.</p></div><span class="alert-total">${data.alertTotal || 0}</span></div><div class="alert-grid">${(data.alerts || []).map(alert => `<article class="alert-card ${escapeHtml(alert.severity || 'info')}"><div><strong>${escapeHtml(alert.label)}</strong><span>${alert.note ? escapeHtml(alert.note) : (alert.count ? 'Requiere revisión' : 'Sin pendientes')}</span></div><b>${alert.count}</b></article>`).join('')}</div></section>
     <div class="grid2"><section class="panel"><h3>Por tipo</h3>${data.byType.map(row => `<div class="row"><span>${escapeHtml(row.type)}</span><strong>${row.total}</strong></div>`).join('')}</section>
     <section class="panel"><h3>Por sede</h3>${data.bySite.map(row => `<div class="row"><span>${escapeHtml(row.site)}</span><strong>${row.total}</strong></div>`).join('')}</section></div>
-    <section class="panel" style="margin-top:18px"><h3>Actualizados recientemente</h3>${data.recent.map(asset => `<button class="row list-button" data-asset="${asset.id}"><span><strong>${asset.sbn}</strong><br>${escapeHtml(asset.description)}</span><span>${escapeHtml(asset.site)}</span></button>`).join('')}</section>`;
+    <section class="panel" style="margin-top:18px"><h3>Actualizados recientemente</h3>${data.recent.map(asset => `<button class="row list-button" data-asset="${escapeHtml(asset.id)}"><span><strong>${escapeHtml(asset.sbn)}</strong><br>${escapeHtml(asset.description)}</span><span>${escapeHtml(asset.site)}</span></button>`).join('')}</section>`;
   view.querySelectorAll('[data-asset]').forEach(button => button.onclick = () => assetDetail(view, button.dataset.asset));
   view.querySelector('#review-groups').onclick = () => navigate('groups');
   const exportButton = view.querySelector('#export-movements');
@@ -158,7 +170,7 @@ async function assets(view) {
     const renderMember = member => {
       const asset = visible.get(member.assetId);
       if (!asset) return '';
-      return `<tr data-id="${asset.id}"><td><button class="sbn-chip">${asset.sbn}</button></td><td><strong>${escapeHtml(asset.description)}</strong><small>${escapeHtml(asset.brand || '')} ${escapeHtml(asset.model || '')}</small></td><td>${member.componentRole === 'INTEGRATED_UNIT' ? 'Pantalla + procesador' : typeLabel(member.componentRole)}</td><td>${escapeHtml(asset.site)}</td><td><span class="badge">${asset.status}</span></td></tr>`;
+      return `<tr data-id="${escapeHtml(asset.id)}"><td><button class="sbn-chip">${escapeHtml(asset.sbn)}</button></td><td><strong>${escapeHtml(asset.description)}</strong><small>${escapeHtml(asset.brand || '')} ${escapeHtml(asset.model || '')}</small></td><td>${escapeHtml(member.componentRole === 'INTEGRATED_UNIT' ? 'Pantalla + procesador' : typeLabel(member.componentRole))}</td><td>${escapeHtml(asset.site)}</td><td><span class="badge">${escapeHtml(asset.status)}</span></td></tr>`;
     };
     const groupBlocks = groups.map(group => {
       const memberRows = group.members.map(renderMember).filter(Boolean).join('');
@@ -166,7 +178,7 @@ async function assets(view) {
       return `<section class="asset-group-block"><header><div class="group-symbol">${group.groupType === 'ALL_IN_ONE' ? 'AIO' : group.groupType === 'TYPE_2' ? 'T2' : 'WS'}</div><div><span class="eyebrow">${group.groupType === 'ALL_IN_ONE' ? 'ALL IN ONE' : group.groupType === 'TYPE_2' ? 'PC TIPO 2' : 'PC TIPO 3 · WORKSTATION'}</span><h3>${escapeHtml(group.name)}</h3><code>${group.code}</code></div><div class="group-meta"><span>${group.members.length} componentes</span><strong class="${group.complete ? 'complete-text' : 'warning-text'}">${group.complete ? '✓ Grupo completo' : `⚠ Faltan ${group.missingRoles.length}`}</strong></div></header><div class="table-wrap embedded"><table><thead><tr><th>SBN</th><th>Activo</th><th>Función</th><th>Sede</th><th>Estado</th></tr></thead><tbody>${memberRows || '<tr><td colspan="5" class="muted">Ningún componente coincide con el filtro.</td></tr>'}</tbody></table></div></section>`;
     }).join('');
     const independent = data.items.filter(asset => !groupedIds.has(asset.id));
-    const independentRows = independent.map(asset => `<tr data-id="${asset.id}" class="${asset.groupingAlert ? 'warning-row' : ''}"><td><button class="sbn-chip">${asset.sbn}</button></td><td><strong>${escapeHtml(asset.description)}</strong><small>${escapeHtml(asset.brand || '')} ${escapeHtml(asset.model || '')}</small></td><td>${typeLabel(asset.assetType)}</td><td>${asset.groupingAlert ? '<span class="badge group-warning">⚠ Pendiente de agrupación</span>' : '<span class="muted">Activo independiente</span>'}</td><td><span class="badge">${asset.status}</span></td></tr>`).join('');
+    const independentRows = independent.map(asset => `<tr data-id="${escapeHtml(asset.id)}" class="${asset.groupingAlert ? 'warning-row' : ''}"><td><button class="sbn-chip">${escapeHtml(asset.sbn)}</button></td><td><strong>${escapeHtml(asset.description)}</strong><small>${escapeHtml(asset.brand || '')} ${escapeHtml(asset.model || '')}</small></td><td>${escapeHtml(typeLabel(asset.assetType))}</td><td>${asset.groupingAlert ? '<span class="badge group-warning">⚠ Pendiente de agrupación</span>' : '<span class="muted">Activo independiente</span>'}</td><td><span class="badge">${escapeHtml(asset.status)}</span></td></tr>`).join('');
     view.querySelector('#asset-table').innerHTML = `<div class="assets-by-group">${groupBlocks}</div><section class="asset-group-block independent-block"><header><div class="group-symbol neutral">•••</div><div><span class="eyebrow">SIN GRUPO DE EQUIPO</span><h3>Activos independientes y pendientes</h3><p>${independent.length} registros</p></div></header><div class="table-wrap embedded"><table><thead><tr><th>SBN</th><th>Activo</th><th>Tipo</th><th>Clasificación</th><th>Estado</th></tr></thead><tbody>${independentRows || '<tr><td colspan="5" class="muted">No hay activos en esta sección.</td></tr>'}</tbody></table></div></section>`;
     view.querySelectorAll('[data-id]').forEach(row => row.onclick = () => assetDetail(view, row.dataset.id));
   };
@@ -182,7 +194,7 @@ async function assetDetail(view, id) {
   const location = [['Sede', asset.site], ['Edificio', asset.building], ['Piso', asset.floor], ['Ambiente', asset.room], ['Responsable', asset.responsiblePerson], ['Unidad', asset.organizationalUnit]];
   const rows = values => values.map(([label, value]) => `<div class="row"><span>${label}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
   const grouping = asset.assetGroup || asset.grouping?.group;
-  view.innerHTML = `<div class="toolbar"><div><span class="eyebrow">FICHA DEL ACTIVO</span><h2>${asset.sbn}</h2></div><button class="secondary" id="back">Volver</button></div>${asset.groupingAlert ? `<div class="alert warning"><strong>⚠ Componente sin agrupación.</strong> Este activo está inventariado, pero todavía no pertenece a un equipo completo. <button class="secondary" id="group-now">Agrupar ahora</button></div>` : grouping ? `<div class="alert success">✓ Pertenece a <strong>${escapeHtml(grouping.code)}</strong> · ${escapeHtml(grouping.name)}</div>` : ''}<div class="grid2"><section class="panel">${rows(technical)}</section><section class="panel">${rows(location)}</section></div>`;
+  view.innerHTML = `<div class="toolbar"><div><span class="eyebrow">FICHA DEL ACTIVO</span><h2>${escapeHtml(asset.sbn)}</h2></div><button class="secondary" id="back">Volver</button></div>${asset.groupingAlert ? `<div class="alert warning"><strong>⚠ Componente sin agrupación.</strong> Este activo está inventariado, pero todavía no pertenece a un equipo completo. <button class="secondary" id="group-now">Agrupar ahora</button></div>` : grouping ? `<div class="alert success">✓ Pertenece a <strong>${escapeHtml(grouping.code)}</strong> · ${escapeHtml(grouping.name)}</div>` : ''}<div class="grid2"><section class="panel">${rows(technical)}</section><section class="panel">${rows(location)}</section></div>`;
   view.querySelector('#back').onclick = () => navigate('assets');
   const groupButton = view.querySelector('#group-now'); if (groupButton) groupButton.onclick = () => { state.pendingSbn = asset.sbn; navigate('groups'); };
 }
@@ -361,7 +373,7 @@ async function audit(view) {
   const load = async () => { const query = new URLSearchParams({action: view.querySelector('#audit-action').value, entityType: view.querySelector('#audit-entity').value, limit: '200'}); const rows = await request('/audit-logs?' + query); view.querySelector('#audit-count').textContent = `${rows.length} eventos`; renderTable(view.querySelector('#audit-table'), '', ['Fecha', 'Acci?n', 'Entidad', 'IP'], rows.map(row => [row.created_at, row.action, row.entity_type, row.ip_address || '?'])); };
   view.querySelector('#audit-search').onclick = load; view.querySelector('#audit-export').onclick = () => { const q=new URLSearchParams({action:view.querySelector('#audit-action').value,entityType:view.querySelector('#audit-entity').value,limit:'1000'}); window.location.href=API+'/audit-logs.csv?'+q; }; await load();
 }
-function renderTable(view, title, headers, rows) { view.innerHTML = `<h2>${title}</h2><div class="table-wrap"><table><thead><tr>${headers.map(value => `<th>${value}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; }
+function renderTable(view, title, headers, rows) { view.innerHTML = `<h2>${escapeHtml(title)}</h2><div class="table-wrap"><table><thead><tr>${headers.map(value => `<th>${escapeHtml(value)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; }
 
 async function settings(view) {
   view.innerHTML = `<h2>Configuración y seguridad</h2><div id="settings-message"></div><form class="panel" id="password"><label class="field">Contraseña actual<input type="password" name="currentPassword" required></label><label class="field">Nueva contraseña<input type="password" name="newPassword" minlength="12" required></label><button class="primary">Cambiar contraseña</button></form>`;
